@@ -1,0 +1,215 @@
+# SPDX-FileCopyrightText: 2025-2026 Xianning Zhan
+# SPDX-License-Identifier: BSD-3-Clause
+
+# yaml-language-server: $schema=https://raw.githubusercontent.com/riscv/riscv-unified-db/main/spec/schemas/config_schema.json
+
+# ACT4 DUT declaration for the eRISCV-M2 product profile.
+# This describes the product contract, not the older edu-rv32i-5s CPU-only
+# Phase 12 validation boundary.
+---
+$schema: config_schema.json#
+kind: architecture configuration
+type: fully configured
+name: eriscv_m2
+description: eRISCV-M2 RV32IMFC_Zicsr_Zifencei_Zicntr_Zihpm_Zihintpause_Zba_Zbb_Zbs_Zicond_Zcf M/U-mode MCU profile
+implemented_extensions:
+  - { name: I, version: "= 2.1" }
+  - { name: M, version: "= 2.0" }
+  - { name: F, version: "= 2.2.0" }
+  - { name: C, version: "= 2.0" }
+  # UDB models RV32C through decomposed Zca plus the RV32F-dependent Zcf.
+  # ACT4 selects their instruction tests through the Zca and Zcf buckets.
+  - { name: Zca, version: "= 1.0" }
+  - { name: Zcf, version: "= 1.0.0" }
+  - { name: Zicsr, version: "= 2.0" }
+  - { name: Zifencei, version: "= 2.0.0" }
+  - { name: Zicntr, version: "= 2.0" }
+  - { name: Zihpm, version: "= 2.0" }
+  - { name: Zihintpause, version: "= 2.0.0" }
+  - { name: Zba, version: "= 1.0.0" }
+  - { name: Zbb, version: "= 1.0.0" }
+  - { name: Zbs, version: "= 1.0.0" }
+  - { name: Zicond, version: "= 1.0" }
+  - { name: U, version: "= 1.0.0" }
+  # UDB uses Sm for the M-mode privileged architecture. This is not an
+  # S/U/Smepmp product claim; the default ACT corpus still excludes Sm tests.
+  - { name: Sm, version: "= 1.12.0" }
+
+params:
+  # XLEN / addressing
+  MXLEN: 32
+  PHYS_ADDR_WIDTH: 32
+
+  # eRISCV-M2 implements misa and advertises RV32IMFCB. Implementation/vendor IDs
+  # are not part of the product claim today.
+  MISA_CSR_IMPLEMENTED: true
+  MUTABLE_MISA_C: false
+  MUTABLE_MISA_M: false
+  MUTABLE_MISA_F: false
+  # M2 permits all architectural FS states. It may set FS=Dirty for a
+  # committed FP access that does not modify an FPR, so model this as eager.
+  HW_MSTATUS_FS_DIRTY_UPDATE: imprecise
+  MSTATUS_FS_LEGAL_VALUES: [0, 1, 2, 3]
+  MARCHID_IMPLEMENTED: false
+  MIMPID_IMPLEMENTED: false
+  VENDOR_ID_BANK: 0x0
+  VENDOR_ID_OFFSET: 0x0
+  CONFIG_PTR_ADDRESS: 0x0
+
+  # Endianness
+  M_MODE_ENDIANNESS: little
+
+  # M1 supports U-mode without S-mode or address translation.
+  MUTABLE_MISA_U: false
+  U_MODE_ENDIANNESS: little
+  UXLEN: [32]
+  TRAP_ON_ECALL_FROM_U: true
+
+  # Machine-mode synchronous trap behavior in the eriscv-m2 contract.
+  TRAP_ON_ECALL_FROM_M: true
+  TRAP_ON_EBREAK: true
+  TRAP_ON_UNIMPLEMENTED_INSTRUCTION: true
+  TRAP_ON_RESERVED_INSTRUCTION: true
+  TRAP_ON_UNIMPLEMENTED_CSR: true
+  TRAP_ON_ILLEGAL_WLRL: false
+
+  # Current mtval contract follows the implemented core baseline.
+  REPORT_VA_IN_MTVAL_ON_BREAKPOINT: false
+  REPORT_VA_IN_MTVAL_ON_LOAD_MISALIGNED: true
+  REPORT_VA_IN_MTVAL_ON_STORE_AMO_MISALIGNED: true
+  REPORT_VA_IN_MTVAL_ON_INSTRUCTION_MISALIGNED: true
+  REPORT_VA_IN_MTVAL_ON_LOAD_ACCESS_FAULT: true
+  REPORT_VA_IN_MTVAL_ON_STORE_AMO_ACCESS_FAULT: true
+  REPORT_VA_IN_MTVAL_ON_INSTRUCTION_ACCESS_FAULT: true
+  REPORT_ENCODING_IN_MTVAL_ON_ILLEGAL_INSTRUCTION: true
+  MTVAL_WIDTH: 32
+
+  # Misaligned loads/stores trap; they are not transparently completed.
+  MISALIGNED_LDST: false
+  MISALIGNED_LDST_EXCEPTION_PRIORITY: low
+
+  # eriscv-m2 supports M/U modes and direct/vectored machine trap entry.
+  MTVEC_MODES: [0, 1]
+  MTVEC_ACCESS: rw
+  MTVEC_BASE_ALIGNMENT_DIRECT: 4
+  MTVEC_BASE_ALIGNMENT_VECTORED: 4
+  MTVEC_ILLEGAL_WRITE_BEHAVIOR: custom
+
+  # RV32C enables halfword instruction alignment.
+  PRECISE_SYNCHRONOUS_EXCEPTIONS: true
+  PMA_GRANULARITY: 2
+
+  # eRISCV-M2 implements Zicntr plus HPM3..6 selected by mhpmevent3..6.
+  TIME_CSR_IMPLEMENTED: true
+  HPM_COUNTER_EN:
+    [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]
+  HPM_EVENTS: [0, 4, 6, 7, 8, 9, 10, 11, 14, 18, 19]
+  # M-mode counters are individually inhibitable through bits 0, 2..6.
+  MCOUNTINHIBIT_IMPLEMENTED: true
+  COUNTINHIBIT_EN:
+    [
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]
+  MCOUNTENABLE_EN:
+    [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]
+
+  # eRISCV-M2 PMP: 16 entries, G=0 / 4-byte minimum granularity.
+  NUM_PMP_ENTRIES: 16
+  PMP_GRANULARITY: 2

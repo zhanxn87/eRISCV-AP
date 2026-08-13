@@ -1,0 +1,20 @@
+Purpose: verify Phase 4 load/store behavior, byte lanes, sign and zero extension, forwarding into stores, and load-use stalls.
+Memory model: instruction memory and data memory both use a deterministic 1-cycle read latency.
+
+Instruction flow:
+1. Set x1 to data base 0x00040200, build 0x11223344 in x2, and store it with SW at 0(x1).
+2. LW x3 from 0(x1), then immediately ADDI x4, x3, 1 to require a load-use bubble.
+3. LB/LBU/LH/LHU read different byte and halfword lanes from 0x11223344.
+4. SB x9 at byte offset 1 changes the word to 0x1122ff44; LW x10 checks byte-enable behavior.
+5. SB x11 at byte offset 3 creates a negative byte; LB x12 sign-extends it and LBU x13 zero-extends it.
+6. SH x14 at halfword offset 2 writes 0xfffe; LH x15 sign-extends it and LHU x16 zero-extends it.
+7. ADDI x17 followed immediately by SW x17, 8(x1) checks store-data forwarding.
+8. LW x18 followed immediately by ADDI x19, x18, 5 checks a second load-use bubble.
+9. ADDI x20, x1, 12 followed by SW x19, 0(x20) checks store-address forwarding and older store-data forwarding.
+10. LW x21 from 0(x20) confirms the forwarded store wrote the expected value.
+
+Expected output:
+x1=00040200 x2=11223344 x3=11223344 x4=11223345
+x5=00000044 x6=00000033 x7=00003344 x8=00001122
+x10=1122ff44 x12=ffffff80 x13=00000080 x15=fffffffe x16=0000fffe
+x18=00000007 x19=0000000c x20=0004020c x21=0000000c

@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
+description: eRISCV-MCU SPI0 controller
+
+compatible: "eriscv,spi0"
+
+include: spi-controller.yaml
+
+properties:
+  reg:
+    required: true
+  interrupts:
+    required: true

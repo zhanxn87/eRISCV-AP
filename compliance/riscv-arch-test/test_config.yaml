@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2025-2026 Xianning Zhan
+# SPDX-License-Identifier: BSD-3-Clause
+
+# ACT4 config for eRISCV-M2 — generates full ISA set.
+# Regression scripts filter by test name to select appropriate subsets per product level.
+name: eriscv_m2
+compiler_exe: $repo_root/tools/compliance/riscv-arch-test/act4-gcc-wrapper.sh
+objdump_exe: riscv64-unknown-elf-objdump
+ref_model_exe: sail_riscv_sim
+udb_config: eriscv_mcu.yaml
+linker_script: link.ld
+dut_include_dir: .
+include_priv_tests: false

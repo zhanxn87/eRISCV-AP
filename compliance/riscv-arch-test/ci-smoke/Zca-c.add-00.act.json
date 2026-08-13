@@ -1,0 +1,9 @@
+{
+  "instr_mem_file": "Zca-c.add-00.mem",
+  "data_mem_file": "Zca-c.add-00.data.mem",
+  "boot_addr": 128,
+  "tohost_addr": 65536,
+  "tohost_pass_value": 1,
+  "tohost_fail_value": 3,
+  "sig_base": 73760
+}

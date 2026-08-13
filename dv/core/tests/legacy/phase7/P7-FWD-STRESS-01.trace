@@ -1,0 +1,14 @@
+Purpose: stress the Phase 7 inherited forwarding network without adding RTL.
+Memory model: instruction memory has 1-cycle read latency; data memory is unused.
+
+Checks:
+1. Repeated writes to x1 verify EX/MEM forwarding has priority over an older MEM/WB match.
+2. add x3 and add x4 consume two forwarded operands in adjacent cycles.
+3. addi x0 followed by add x6 confirms x0 writes are not forwarded.
+4. beq consumes forwarded branch operands and flushes the wrong-path addi x9=99.
+5. jalr consumes a forwarded base register, writes link x13=0x40, and flushes two wrong-path instructions.
+
+Expected output:
+x1=00000008 x2=00000007 x3=0000000f x4=00000017 x5=00000014 x6=00000014
+x7=0000000b x8=0000000b x9=00000009 x12=00000048 x13=00000040
+x14=0000000e x15=0000000f x17=0000001d

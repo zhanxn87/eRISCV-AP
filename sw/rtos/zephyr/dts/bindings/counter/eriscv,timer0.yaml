@@ -1,0 +1,14 @@
+# Copyright (c) 2024 eRISCV-MCU Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+description: eRISCV-MCU APB timer
+
+compatible: "eriscv,timer0"
+
+include: [base.yaml]
+
+properties:
+  reg:
+    required: true
+  interrupts:
+    required: true

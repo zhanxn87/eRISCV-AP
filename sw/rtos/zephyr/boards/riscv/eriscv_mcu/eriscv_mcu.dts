@@ -1,0 +1,131 @@
+/*
+ * eRISCV-M2 Device Tree
+ * Copyright (c) 2024 eRISCV-MCU Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+
+/* IRQ_TYPE_LEVEL_HIGH = 4 */
+#define IRQ_TYPE_LEVEL_HIGH 4
+
+/ {
+	model = "eRISCV-M2";
+	compatible = "eriscv,eriscv-m2";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	chosen {
+		zephyr,console = &uart0;
+		zephyr,shell-uart = &uart0;
+		zephyr,sram = &dmem;
+		zephyr,flash = &imem;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu0: cpu@0 {
+			compatible = "eriscv,m2-cpu", "riscv";
+			reg = <0>;
+			device_type = "cpu";
+			/* The physical core implements F/Zcf and standard B; the RTOS Makefile
+			 * deliberately selects its integer subset until F task-context
+			 * save/restore is supported. */
+			riscv,isa = "rv32imfc_zicsr_zifencei_zicntr_zihpm_zihintpause_zba_zbb_zbs_zicond_zcf";
+			riscv,pmpregions = <16>;
+			riscv,machine-timer = <&clint>;
+
+		cpu0_intc: interrupt-controller {
+			compatible = "riscv,cpu-intc";
+			#address-cells = <0>;
+			#interrupt-cells = <1>;
+				interrupt-controller;
+			};
+		};
+	};
+
+	imem: memory@10000000 {
+		compatible = "mmio-sram";
+		reg = <0x10000000 0x20000>;
+	};
+
+	dmem: memory@11000000 {
+		compatible = "mmio-sram";
+		reg = <0x11000000 0x20000>;
+	};
+
+	system_sram: memory@80000000 {
+		compatible = "mmio-sram";
+		reg = <0x80000000 0x80000>;
+	};
+
+	clint: clint@2000000 {
+		compatible = "sifive,clint0";
+		reg = <0x02000000 0x10000>;
+		interrupts-extended = <&cpu0_intc 3 &cpu0_intc 7>;
+	};
+
+	plic: plic@c000000 {
+		compatible = "sifive,plic-1.0.0";
+		reg = <0x0c000000 0x400000>;
+		#address-cells = <1>;
+		#interrupt-cells = <2>;
+		interrupt-controller;
+		interrupts-extended = <&cpu0_intc 11>;
+		riscv,max-priority = <7>;
+		riscv,ndev = <32>;
+	};
+
+	soc {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "eriscv,eriscv-mcu-soc";
+		ranges;
+
+		uart0: uart@40000000 {
+			compatible = "eriscv,uart0";
+			reg = <0x40000000 0x1000>;
+			interrupts = <1 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-parent = <&plic>;
+			clock-frequency = <100000000>;
+			current-speed = <115200>;
+			status = "okay";
+		};
+
+		gpio0: gpio@40010000 {
+			compatible = "eriscv,gpio0";
+			reg = <0x40010000 0x1000>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			status = "okay";
+		};
+
+		timer0: timer@40020000 {
+			compatible = "eriscv,timer0";
+			reg = <0x40020000 0x1000>;
+			interrupts = <2 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-parent = <&plic>;
+			status = "okay";
+		};
+
+		spi0: spi@40030000 {
+			compatible = "eriscv,spi0";
+			reg = <0x40030000 0x1000>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			interrupts = <3 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-parent = <&plic>;
+			status = "okay";
+		};
+
+		wdt0: wdt@40040000 {
+			compatible = "eriscv,wdt0";
+			reg = <0x40040000 0x1000>;
+			interrupts = <4 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-parent = <&plic>;
+			status = "okay";
+		};
+	};
+};

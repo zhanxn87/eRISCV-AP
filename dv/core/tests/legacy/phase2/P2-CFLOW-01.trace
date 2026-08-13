@@ -1,0 +1,25 @@
+Purpose: verify Phase 2 branch/JAL/JALR decode, EX-stage redirect, wrong-path flush, and link-register writeback.
+Memory model: instruction memory has 1-cycle read latency; no data-memory access is expected.
+Hazard policy: setup values are separated with NOPs before the first branch; later checks avoid unsupported data hazards.
+
+Instruction flow:
+1. addi x1, x0, 1; addi x2, x0, 2; addi x3, x0, -1 prepare branch operands.
+2. beq x1, x1 is taken and flushes the wrong-path addi x4, x0, 99.
+3. addi x4, x0, 4 confirms execution resumes at the BEQ target.
+4. bne x1, x1 is not taken, so addi x5, x0, 5 executes sequentially.
+5. blt x1, x2 is taken and flushes the wrong-path addi x6, x0, 99.
+6. addi x6, x0, 6 confirms execution resumes at the BLT target.
+7. bge x1, x2 is not taken, so addi x7, x0, 7 executes sequentially.
+8. bltu x1, x2 is taken and flushes the wrong-path addi x8, x0, 99.
+9. addi x8, x0, 8 confirms execution resumes at the BLTU target.
+10. bgeu x1, x2 is not taken, so addi x9, x0, 9 executes sequentially.
+11. jal x10, label7 is taken, writes the link PC+4 to x10, and flushes addi x11, x0, 99.
+12. addi x11, x0, 11 confirms execution resumes at the JAL target.
+13. auipc x12, 0 captures the JALR base PC in x12.
+14. JALR uses x12+28, writes the link PC+4 to x13, and flushes addi x14, x0, 99.
+15. addi x14, x0, 14 confirms execution resumes at the JALR target.
+
+Expected output:
+x0=00000000 x1=00000001 x2=00000002 x3=ffffffff x4=00000004
+x5=00000005 x6=00000006 x7=00000007 x8=00000008 x9=00000009
+x10=0000005c x11=0000000b x12=00000064 x13=0000007c x14=0000000e

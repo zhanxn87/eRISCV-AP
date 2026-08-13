@@ -1,0 +1,18 @@
+Purpose: verify Phase 5 CSR file access, ECALL trap entry, trap handler CSR reads, MEPC update, and MRET return.
+Memory model: instruction memory and data memory both use deterministic 1-cycle read latency. Data memory remains unused in this testcase.
+
+Instruction flow:
+1. addi x1, x0, 0x80 prepares the trap vector address.
+2. csrrw x5, mtvec, x1 writes mtvec=0x80 and returns the reset mtvec value in x5.
+3. ecall raises a machine-mode environment-call trap in EX.
+4. trap control redirects fetch to mtvec=0x80 and records mepc=0x00000008 and mcause=11.
+5. csrrs x6, mcause, x0 reads the trap cause.
+6. csrrs x7, mepc, x0 reads the trapped ECALL PC.
+7. addi x8, x7, 4 computes the resume PC after ECALL.
+8. csrrw x0, mepc, x8 updates mepc to the resume PC.
+9. mret redirects fetch to mepc=0x0000000c.
+10. addi x9, x0, 9 and addi x10, x0, 10 confirm execution resumed after ECALL.
+11. jal x0, done holds the main program after completion so it does not fall through into the handler.
+
+Expected output:
+x1=00000080 x5=00000080 x6=0000000b x7=00000008 x8=0000000c x9=00000009 x10=0000000a

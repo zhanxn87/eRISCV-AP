@@ -1,0 +1,13 @@
+# eRISCV-M2 board configuration
+# Copyright (c) 2024 eRISCV-MCU Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_ERISCV_MCU
+	bool "eRISCV-M2 Board"
+	depends on SOC_ERISCV_MCU
+	help
+	  eRISCV-M2 is the RV32IMFC product variant with PMP, standard B, Zicond, and Zcf.
+	  It provides 128 KB ITCM, 128 KB DTCM, 512 KB System SRAM, DMA, UART,
+	  GPIO, APB Timer, SPI, WDT, and a 32-source PLIC. The current Zephyr
+	  profile intentionally uses the integer ISA subset until F task-context
+	  save/restore is available.

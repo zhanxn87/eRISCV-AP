@@ -1,0 +1,5 @@
+Configure UART0 BAUDDIV=8 and CTRL=TXEN|RXEN.
+Poll STATUS.tx_ready before each transmitted byte.
+Write TXDATA bytes for the string "Hello World".
+The TB decodes uart_tx_o and checks the expected byte sequence.
+Set x5 to the transmitted byte count for the expected-register oracle.

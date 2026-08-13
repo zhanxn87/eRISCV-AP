@@ -1,0 +1,12 @@
+Purpose: stress back-to-back CSR dependencies in the Phase 5/6 CSR baseline.
+Memory model: instruction memory has 1-cycle read latency; data memory is unused.
+
+Checks:
+1. csrrw mtvec immediately followed by csrrs mtvec observes the written value.
+2. csrrw mstatus immediately followed by csrrs mstatus observes 0x8.
+3. CSRRS sets bits 0 and 1, and the following read observes 0xb.
+4. CSRRC clears bit 1, and the following read observes 0x9.
+
+Expected output:
+x1=00000080 x2=00000080 x3=00000080 x6=00000008 x7=00000008
+x8=00000003 x9=0000000b x10=00000002 x11=00000009

@@ -1,0 +1,15 @@
+P10-MEMWAIT-01 expected execution:
+  0x00000000 addi x1, x0, 0x100  ; data-memory base address
+  0x00000004 addi x2, x0, 0x02a  ; store payload
+  0x00000008 sw   x2, 0(x1)      ; write data memory
+  0x0000000c lw   x3, 0(x1)      ; load returns after configured DMEM read latency
+  0x00000010 add  x4, x3, x2     ; load-use dependency must receive x3
+  0x00000014 addi x5, x4, 1      ; final arithmetic check
+  0x00000018 jal  x0, 0x18       ; stable loop while TB checks registers
+
+Expected final state:
+  x1 = 0x00000100
+  x2 = 0x0000002a
+  x3 = 0x0000002a
+  x4 = 0x00000054
+  x5 = 0x00000055

@@ -1,0 +1,30 @@
+# eRISCV-MCU SoC default configuration
+# Copyright (c) 2024 eRISCV-MCU Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+if SOC_ERISCV_MCU
+
+config SOC
+	default "eriscv_mcu"
+
+config NUM_IRQS
+	int
+	default 32
+	help
+	  Number of PLIC interrupt sources on eRISCV-MCU.
+
+config SYS_CLOCK_HW_CYCLES_PER_SEC
+	int
+	default 100000000
+	help
+	  System clock frequency in Hz (100 MHz).
+
+config RISCV_ISA_EXT_M
+	bool
+	default y
+
+config RISCV_ISA_EXT_C
+	bool
+	default y
+
+endif # SOC_ERISCV_MCU

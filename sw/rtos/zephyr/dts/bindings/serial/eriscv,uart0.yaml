@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+
+description: eRISCV-MCU UART0
+
+compatible: "eriscv,uart0"
+
+include: uart-controller.yaml
+
+properties:
+  reg:
+    required: true
+  clock-frequency:
+    type: int
+    required: true
+  current-speed:
+    type: int
+    required: true

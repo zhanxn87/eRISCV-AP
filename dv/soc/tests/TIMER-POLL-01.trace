@@ -1,0 +1,4 @@
+Configure TIMER0.COMPARE=20.
+Enable TIMER0.CTRL.enable.
+Poll TIMER0.STATUS.expired until it becomes 1.
+Read STATUS into x5 and set x6 as the completion marker.

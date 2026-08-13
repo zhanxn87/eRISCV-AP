@@ -1,0 +1,374 @@
+<mxfile host="Electron" agent="Codex">
+  <diagram id="eriscv-m2-framework" name="eRISCV-M2 Framework">
+    <mxGraphModel dx="2022" dy="1201" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1320" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontFamily=Calibri;fontSize=24;fontStyle=1;align=left;verticalAlign=middle;" value="eRISCV-M2 Framework Architecture" vertex="1">
+          <mxGeometry height="36" width="980" x="40" y="25" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontFamily=Calibri;fontSize=12;align=left;verticalAlign=middle;fontColor=#404040;" value="RV32IMFC / Zba / Zcf, M/U-mode, PMP, CVFPU and System-SRAM DMA · detailed implementation framework" vertex="1">
+          <mxGeometry height="24" width="1200" x="40" y="61" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_data" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#404040;fontFamily=Calibri;fontSize=10;" value="data / request" vertex="1">
+          <mxGeometry height="24" width="112" x="1371" y="32" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_control" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#3e75a6;fontFamily=Calibri;fontSize=10;fontColor=#3e75a6;" value="control / status" vertex="1">
+          <mxGeometry height="24" width="120" x="1493" y="32" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_event" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#c00000;fontFamily=Calibri;fontSize=10;fontColor=#c00000;" value="trap / IRQ / debug" vertex="1">
+          <mxGeometry height="24" width="136" x="1623" y="32" as="geometry" />
+        </mxCell>
+        <mxCell id="core" parent="1" style="swimlane;html=1;rounded=0;whiteSpace=wrap;startSize=34;fillColor=#f5f5f5;strokeColor=#404040;fontFamily=Calibri;fontSize=14;fontStyle=1;shadow=1;" value="eRISCV-M2 CORE · RV32IMFC / Zicsr / Zifencei / Zicntr / Zihpm / Zihintpause / Zba / Zcf · M/U modes" vertex="1">
+          <mxGeometry height="390" width="1720" x="40" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="if" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#404040;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;" value="IF&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;pair-word fetch&lt;br&gt;two-line buffer&lt;br&gt;C16 / RV32 assembly&lt;br&gt;redirect + fence.i discard&lt;/font&gt;" vertex="1">
+          <mxGeometry height="128" width="185" x="25" y="68" as="geometry" />
+        </mxCell>
+        <mxCell id="ifid" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b8accd;strokeColor=#404040;fontFamily=Calibri;fontSize=12;fontStyle=1;shadow=1;" value="IF/ID&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;pc · instr · valid&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="70" x="227" y="78" as="geometry" />
+        </mxCell>
+        <mxCell id="id" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#404040;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;" value="ID&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;C decompressor · decoder&lt;br&gt;GPR/FPR read + immediate&lt;br&gt;BHT/BTFNT + 4-entry RAS&lt;br&gt;integer + FP hazards&lt;/font&gt;" vertex="1">
+          <mxGeometry height="128" width="205" x="315" y="68" as="geometry" />
+        </mxCell>
+        <mxCell id="idex" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b8accd;strokeColor=#404040;fontFamily=Calibri;fontSize=12;fontStyle=1;shadow=1;" value="ID/EX&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;operands · control&lt;br&gt;integer / FP fields&lt;br&gt;valid&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="70" x="537" y="78" as="geometry" />
+        </mxCell>
+        <mxCell id="ex" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#404040;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;" value="EX&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;ALU · Zba · branch/jump resolve&lt;br&gt;forwarding + load-response bypass&lt;br&gt;early DTCM-load address&lt;br&gt;CSR/system/debug actions&lt;/font&gt;" vertex="1">
+          <mxGeometry height="128" width="261" x="639" y="68" as="geometry" />
+        </mxCell>
+        <mxCell id="exmem" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b8accd;strokeColor=#404040;fontFamily=Calibri;fontSize=12;fontStyle=1;shadow=1;" value="EX/MEM&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;address · store data&lt;br&gt;integer / FP result&lt;br&gt;valid&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="70" x="955" y="78" as="geometry" />
+        </mxCell>
+        <mxCell id="mem" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#404040;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;" value="MEM&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;D-bus request/response&lt;br&gt;local-load completion&lt;br&gt;load align + sign extend&lt;br&gt;FLW / FSW use LSU&lt;/font&gt;" vertex="1">
+          <mxGeometry height="128" width="195" x="1078" y="68" as="geometry" />
+        </mxCell>
+        <mxCell id="memwb" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#b8accd;strokeColor=#404040;fontFamily=Calibri;fontSize=12;fontStyle=1;shadow=1;" value="MEM/WB&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;wb data · rd / frd&lt;br&gt;valid&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="70" x="1297" y="78" as="geometry" />
+        </mxCell>
+        <mxCell id="wb" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#404040;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;" value="WB&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;GPR/FPR writeback&lt;br&gt;FCSR flags at commit&lt;br&gt;architectural retirement&lt;/font&gt;" vertex="1">
+          <mxGeometry height="128" width="180" x="1392" y="68" as="geometry" />
+        </mxCell>
+        <mxCell id="control" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d1dab4;strokeColor=#3e75a6;fontFamily=Calibri;fontSize=12;fontStyle=1;shadow=1;" value="Pipeline Control&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;stage enables / flushes&lt;br&gt;stall arbitration&lt;br&gt;redirect priority&lt;/font&gt;" vertex="1">
+          <mxGeometry height="83" width="128" x="422" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="csrtrap" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d1dab4;strokeColor=#404040;fontFamily=Calibri;fontSize=12;fontStyle=1;shadow=1;" value="CSR + Trap Control&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;M/U privilege · mstatus.FS&lt;br&gt;FCSR / mcounteren / PMP CSRs&lt;br&gt;mtvec/mepc/mcause/mtval&lt;/font&gt;" vertex="1">
+          <mxGeometry height="83" width="150" x="634" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="muldiv" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fce5cd;strokeColor=#c00000;fontFamily=Calibri;fontSize=12;fontStyle=1;shadow=1;" value="RV32M Unit&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;iterative MUL/MULH&lt;br&gt;DIV/REM shortcuts&lt;br&gt;EX holds while busy&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="130" x="810" y="237.5" as="geometry" />
+        </mxCell>
+        <mxCell id="fpu" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fce5cd;strokeColor=#c00000;fontFamily=Calibri;fontSize=12;fontStyle=1;shadow=1;" value="FPU Adapter + CVFPU&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;RV32F binary32 · f0–f31&lt;br&gt;one outstanding valid/ready op&lt;br&gt;precise result + IEEE flags&lt;br&gt;EX holds until completion&lt;/font&gt;" vertex="1">
+          <mxGeometry height="83" width="173" x="955" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="debugcore" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d1dab4;strokeColor=#c00000;fontFamily=Calibri;fontSize=12;fontStyle=1;shadow=1;" value="Debug Run State&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;halt after drain · resume at dpc&lt;br&gt;abstract GPR / debug CSR access&lt;br&gt;triggers: mcontrol / icount&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="180" x="150" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="pmp" parent="core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f4cccc;strokeColor=#c00000;fontFamily=Calibri;fontSize=12;fontStyle=1;shadow=1;" value="PMP Checker&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;16 entries · CPU fetch/load/store checks&lt;br&gt;precise access-fault packet&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="240" x="1180" y="235" as="geometry" />
+        </mxCell>
+        <mxCell id="core_note" parent="core" style="text;html=1;strokeColor=none;fillColor=none;fontFamily=Calibri;fontSize=10;align=left;verticalAlign=middle;fontColor=#404040;" value="Default performance gates: LMEM early-load · completed-load bypass · BHT · RAS · upper-32 prefetch · pair-word IF" vertex="1">
+          <mxGeometry height="20" width="700" x="1040" y="365" as="geometry" />
+        </mxCell>
+        <mxCell id="e_if_ifid" edge="1" parent="core" source="if" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;" target="ifid">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ifid_id" edge="1" parent="core" source="ifid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;" target="id">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_id_idex" edge="1" parent="core" source="id" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;" target="idex">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_idex_ex" edge="1" parent="core" source="idex" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;" target="ex">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ex_exmem" edge="1" parent="core" source="ex" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;" target="exmem">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_exmem_mem" edge="1" parent="core" source="exmem" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;" target="mem">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mem_memwb" edge="1" parent="core" source="mem" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;" target="memwb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_memwb_wb" edge="1" parent="core" source="memwb" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;" target="wb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ex_muldiv" edge="1" parent="core" source="ex" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;startArrow=block;endArrow=block;dashed=1;strokeColor=#c00000;" target="muldiv">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="760" y="220" />
+              <mxPoint x="875" y="220" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_ex_fpu" edge="1" parent="core" source="ex" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;startArrow=block;endArrow=block;dashed=1;strokeColor=#c00000;" target="fpu">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="820" y="210" />
+              <mxPoint x="1040" y="210" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_ctrl_pipe" edge="1" parent="core" source="control" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#3e75a6;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="idex" value="enable / flush">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="570" y="225" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_csr_ctrl" edge="1" parent="core" source="csrtrap" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#c00000;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="control" value="trap / mret / IRQ">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_debug_ctrl" edge="1" parent="core" source="debugcore" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#c00000;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="control" value="halt / resume">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="410" y="284" />
+              <mxPoint x="410" y="284" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_pmp_csrtrap" edge="1" parent="core" source="pmp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#c00000;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="csrtrap" value="PMP configuration / access fault">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1300" y="345" />
+              <mxPoint x="760" y="345" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_wb_id" edge="1" parent="core" source="wb" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#7030a0;" target="id">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1480" y="50" />
+              <mxPoint x="420" y="50" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="imem" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf9000;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;" value="ITCM / IMEM · 128 KiB&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;adjacent even/odd 1RW banks&lt;br&gt;boot writer &gt; CPU DBus &gt; IF&lt;br&gt;executable · pair-line response&lt;/font&gt;" vertex="1">
+          <mxGeometry height="110" width="220" x="70" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="dmem" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf9000;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;" value="DTCM / DMEM · 128 KiB&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;1RW local SRAM · non-executable&lt;br&gt;Debug SBA &gt; CPU ownership&lt;br&gt;one-cycle accepted request&lt;/font&gt;" vertex="1">
+          <mxGeometry height="110" width="230" x="410" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="dbus" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;strokeWidth=3;" value="D-bus Interconnect&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;IMEM · DMEM · System SRAM · DMA&lt;br&gt;CLINT · PLIC · APB&lt;br&gt;unmapped → error response&lt;/font&gt;" vertex="1">
+          <mxGeometry height="110" width="210" x="780" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="sysram" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#bf9000;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;" value="System SRAM Fabric · 512 KiB&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;8 × 64 KiB · 32-bit 1RW banks&lt;br&gt;per-bank fair arbitration · registered ready/response&lt;br&gt;CPU DBus + generic DMA wired&lt;br&gt;MAC/Wi-Fi ingress reserved&lt;/font&gt;" vertex="1">
+          <mxGeometry height="110" width="230" x="1110" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="dma" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fce5cd;strokeColor=#c00000;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;" value="Generic DMA v1&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;one channel · direct copy&lt;br&gt;linked descriptors in System SRAM&lt;br&gt;System-SRAM → UART0 TX endpoint&lt;br&gt;completion/error: PLIC source 5&lt;/font&gt;" vertex="1">
+          <mxGeometry height="110" width="230" x="1490" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="debug" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f4cccc;strokeColor=#c00000;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;" value="JTAG Debug Subsystem&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;JTAG DTM · DMI CDC&lt;br&gt;Debug Module Minimal&lt;br&gt;SBA + DMI-MMIO bridge&lt;/font&gt;" vertex="1">
+          <mxGeometry height="115" width="235" x="397.5" y="825" as="geometry" />
+        </mxCell>
+        <mxCell id="boot" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fce5cd;strokeColor=#c00000;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;" value="Boot Subsystem&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;bypass · DMI boot · UART boot&lt;br&gt;SPI slave boot · boot source arbiter&lt;br&gt;privileged IMEM writer&lt;/font&gt;" vertex="1">
+          <mxGeometry height="115" width="220" x="70" y="825" as="geometry" />
+        </mxCell>
+        <mxCell id="clockreset" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d1dab4;strokeColor=#3e75a6;fontFamily=Calibri;fontSize=13;fontStyle=1;shadow=1;" value="Clock / Reset / System Control&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;root clock · reset synchronization&lt;br&gt;peripheral busy / WFI control&lt;/font&gt;" vertex="1">
+          <mxGeometry height="95" width="240" x="210" y="960" as="geometry" />
+        </mxCell>
+        <mxCell id="clint" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f4cccc;strokeColor=#b85450;fontFamily=12;fontStyle=1;shadow=1;" value="CLINT&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;MSIP · MTIME · MTIMECMP&lt;/font&gt;" vertex="1">
+          <mxGeometry height="62" width="175" x="760" y="780" as="geometry" />
+        </mxCell>
+        <mxCell id="plic" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f4cccc;strokeColor=#b85450;fontFamily=12;fontStyle=1;shadow=1;" value="PLIC v1.0&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;32 sources · one context&lt;br&gt;DMA: source 5 · MEIP&lt;/font&gt;" vertex="1">
+          <mxGeometry height="75" width="175" x="760" y="875" as="geometry" />
+        </mxCell>
+        <mxCell id="apb" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d9eaf7;strokeColor=#3e75a6;fontFamily=13;fontStyle=1;shadow=1;" value="APB Bridge + Interconnect&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;32-bit DBus-to-APB · PREADY/PSLVERR&lt;/font&gt;" vertex="1">
+          <mxGeometry height="110" width="220" x="1130" y="825" as="geometry" />
+        </mxCell>
+        <mxCell id="peripherals" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d1dab4;strokeColor=#404040;fontFamily=13;fontStyle=1;shadow=1;" value="Shared APB Peripherals&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;UART0 · GPIO0 · TIMER0 · SPI0&lt;br&gt;Watchdog · clock/reset control&lt;br&gt;UART/TIMER/SPI/WDT IRQ sources&lt;/font&gt;" vertex="1">
+          <mxGeometry height="145" width="150" x="1600" y="807.5" as="geometry" />
+        </mxCell>
+        <mxCell id="pins" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#404040;fontFamily=13;fontStyle=1;shadow=1;" value="External Interfaces&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;JTAG · UART · SPI · GPIO&lt;br&gt;clock/reset · boot-mode pins&lt;br&gt;16 external PLIC inputs: sources 17–32&lt;/font&gt;" vertex="1">
+          <mxGeometry height="100" width="305" x="732.5" y="1050" as="geometry" />
+        </mxCell>
+        <mxCell id="irqnote" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#c00000;fontFamily=11;shadow=1;" value="Machine interrupt inputs: MSIP + MTIP + MEIP&lt;br&gt;WFI wakes on pending interrupt or debug request&lt;br&gt;PMP governs CPU accesses; not generic DMA" vertex="1">
+          <mxGeometry height="100" width="330" x="1420" y="1050" as="geometry" />
+        </mxCell>
+        <mxCell id="e_if_imem" edge="1" parent="1" source="if" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="imem" value="I-bus, 64-bit pair line">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="160" y="540" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_mem_dbus" edge="1" parent="1" source="mem" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="dbus" value="D-bus">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1190" y="540" />
+              <mxPoint x="850" y="540" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_dbus_imem" edge="1" parent="1" source="dbus" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="imem" value="IMEM patch / FENCE.I">
+          <mxGeometry relative="1" x="0.2424" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="680" y="680" />
+              <mxPoint x="680" y="750" />
+              <mxPoint x="230" y="750" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_dbus_dmem" edge="1" parent="1" source="dbus" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="dmem" value="CPU data">
+          <mxGeometry relative="1" x="0.4626" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="640" y="655" />
+              <mxPoint x="640" y="655" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_dbus_sysram" edge="1" parent="1" source="dbus" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="sysram" value="CPU System-SRAM port">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1025" y="655" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_dbus_dma" edge="1" parent="1" source="dbus" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="dma" value="DMA control registers">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1050" y="620" />
+              <mxPoint x="1050" y="555" />
+              <mxPoint x="1600" y="555" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_sysram_dma" edge="1" parent="1" source="sysram" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;startArrow=block;endArrow=block;strokeColor=#404040;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="dma" value="DMA payload + descriptors">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dbus_clint" edge="1" parent="1" source="dbus" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;" target="clint">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="848" y="730" />
+              <mxPoint x="848" y="730" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_dbus_plic" edge="1" parent="1" source="dbus" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="plic">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="885" y="760" />
+              <mxPoint x="960" y="760" />
+              <mxPoint x="960" y="850" />
+              <mxPoint x="848" y="850" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_dbus_apb" edge="1" parent="1" source="dbus" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;" target="apb">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1050" y="680" />
+              <mxPoint x="1050" y="880" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_apb_peri" edge="1" parent="1" source="apb" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="peripherals" value="APB">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1640" y="880" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_irq_core" edge="1" parent="1" source="plic" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#c00000;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="csrtrap" value="MEIP">
+          <mxGeometry relative="1" x="0.423" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="760" y="906" />
+              <mxPoint x="720" y="906" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_clint_core" edge="1" parent="1" source="clint" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#c00000;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="csrtrap" value="MSIP / MTIP / mtime">
+          <mxGeometry relative="1" x="0.4755" y="-20" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="760" y="826" />
+              <mxPoint x="750" y="826" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_dma_plic" edge="1" parent="1" source="dma" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#c00000;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="plic" value="completion / error · source 5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1560" y="790" />
+              <mxPoint x="980" y="790" />
+              <mxPoint x="980" y="890" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_dma_uart" edge="1" parent="1" source="dma" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#c00000;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="peripherals" value="fixed UART0 TX stream">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1680" y="730" />
+              <mxPoint x="1680" y="730" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_debug_core" edge="1" parent="1" source="debug" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#c00000;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="debugcore">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="370" y="883" />
+              <mxPoint x="370" y="500" />
+              <mxPoint x="280" y="500" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_debug_dmem" edge="1" parent="1" source="debug" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#c00000;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="dmem" value="SBA">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="515" y="820" />
+              <mxPoint x="515" y="820" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_boot_imem" edge="1" parent="1" source="boot" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#c00000;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="imem" value="boot writer">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="180" y="800" />
+              <mxPoint x="180" y="800" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_clock_core" edge="1" parent="1" source="clockreset" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#3e75a6;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="control" value="clock enable / reset">
+          <mxGeometry relative="1" x="0.5428" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="330" y="550" />
+              <mxPoint x="526" y="550" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_pins_debug" edge="1" parent="1" source="pins" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#c00000;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="debug" value="JTAG">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="880" y="1000" />
+              <mxPoint x="515" y="1000" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_pins_peri" edge="1" parent="1" source="pins" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#404040;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="peripherals" value="UART / SPI / GPIO">
+          <mxGeometry relative="1" x="-0.0638" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="1320" y="1090" />
+              <mxPoint x="1320" y="1000" />
+              <mxPoint x="1680" y="1000" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_peri_plic" edge="1" parent="1" source="peripherals" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;dashed=1;strokeColor=#c00000;fontFamily=Calibri;fontSize=10;labelBackgroundColor=#ffffff;" target="plic" value="IRQ sources">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1640" y="980" />
+              <mxPoint x="980" y="980" />
+              <mxPoint x="980" y="920" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,27 @@
+Purpose: verify Phase 4 EX-stage forwarding for ALU operands, branch compare operands, JALR base operands, and x0 suppression.
+Memory model: instruction memory has 1-cycle read latency; the testcase itself does not access data memory.
+Hazard policy: no NOP spacing is inserted for the dependencies covered by forwarding.
+
+Instruction flow:
+1. addi x1, x0, 1 produces x1.
+2. addi x2, x1, 2 immediately consumes x1 through EX/MEM forwarding.
+3. add x3, x2, x1 consumes x2 from EX/MEM and x1 from MEM/WB.
+4. add x4, x3, x2 consumes the newest matching values from EX/MEM and MEM/WB.
+5. add x5, x0, x4 confirms rs2 forwarding into the ALU.
+6. addi x0, x0, 99 followed by add x6, x0, x0 confirms writes to x0 are not forwarded.
+7. addi x7, x0, 10 and addi x8, x7, 0 create branch operands without spacing.
+8. beq x8, x7 is taken only if branch compare uses forwarded operands.
+9. addi x9, x0, 99 is the wrong-path branch instruction and must be flushed.
+10. addi x9, x0, 9 confirms execution resumes at the branch target.
+11. addi x12, x0, 0x40 produces the JALR base immediately before JALR.
+12. jalr x13, x12, 0 uses the forwarded base, jumps to 0x40, and writes link 0x38.
+13. addi x14, x0, 99 and addi x15, x0, 77 are wrong-path JALR instructions and must be flushed.
+14. addi x14, x0, 14 confirms execution resumes at the JALR target.
+15. addi x15, x0, 20; addi x16, x0, 3; add x17, x15, x16 covers MEM/WB plus EX/MEM bypass in one ALU instruction.
+16. addi x18, x17, 1 consumes the immediately preceding ALU result.
+
+Expected output:
+x0=00000000 x1=00000001 x2=00000003 x3=00000004 x4=00000007 x5=00000007
+x6=00000000 x7=0000000a x8=0000000a x9=00000009
+x12=00000040 x13=00000038 x14=0000000e x15=00000014
+x16=00000003 x17=00000017 x18=00000018

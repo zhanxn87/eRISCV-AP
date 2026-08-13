@@ -1,0 +1,7 @@
+1. Clear minstret and mcycle through their machine CSR addresses.
+2. Retire three ordinary integer instructions.
+3. Read minstret and mcycle.
+4. Clear minstret again.
+5. Retire one ADDI and read both minstret and instret alias.
+6. Read cycle alias.
+7. Enter the halt loop.

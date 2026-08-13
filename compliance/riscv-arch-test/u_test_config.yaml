@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2025-2026 Xianning Zhan
+# SPDX-License-Identifier: BSD-3-Clause
+
+# ACT4 configuration for the eRISCV-M2 U-mode and U-mode PMP subset.
+name: eriscv_m2_u
+compiler_exe: $repo_root/tools/compliance/riscv-arch-test/act4-gcc-wrapper.sh
+objdump_exe: riscv64-unknown-elf-objdump
+ref_model_exe: sail_riscv_sim
+udb_config: eriscv_mcu.yaml
+linker_script: link.ld
+dut_include_dir: .
+include_priv_tests: true

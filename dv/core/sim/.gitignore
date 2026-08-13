@@ -1,0 +1,4 @@
+/obj_dir/
+/regression_logs/
+/regression_data/
+/.modelsim_work_cache.json

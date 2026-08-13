@@ -1,0 +1,6 @@
+Configure GPIO0.DIR low eight bits as outputs.
+Write GPIO0.OUT=0x0000003c.
+Read GPIO0.OUT into x5.
+Read GPIO0.DIR into x6.
+Read GPIO0.IN into x7. The TB drives gpio_i=0x000000a5.
+Remain in the done loop for the expected-register oracle.

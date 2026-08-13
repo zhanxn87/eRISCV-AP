@@ -1,0 +1,11 @@
+# Copyright (c) 2024 eRISCV-MCU Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+description: eRISCV-MCU watchdog timer
+compatible: "eriscv,wdt0"
+include: [base.yaml]
+properties:
+  reg:
+    required: true
+  interrupts:
+    required: true

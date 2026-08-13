@@ -1,0 +1,6 @@
+1. Set mtvec to the handler at 0x80.
+2. Enable mie.MEIE and mstatus.MIE.
+3. TB asserts irq_i[11] for a short deterministic window.
+4. EX takes a machine external interrupt with mcause=0x8000000b.
+5. Handler reads mcause, mepc, mip, and mstatus, then marks x14=1.
+6. MRET returns to the interrupted PC after the external interrupt pulse has ended.

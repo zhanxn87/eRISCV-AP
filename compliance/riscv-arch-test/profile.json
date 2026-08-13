@@ -1,0 +1,11 @@
+{
+  "name": "eRISCV-M2 ACT4 default product selection",
+  "config_file": "eriscv-m2/compliance/riscv-arch-test/test_config.yaml",
+  "workdir": "eriscv-m2/compliance/riscv-arch-test/work",
+  "extensions": "I,M,F,Zca,Zcf,Zicsr,Zifencei,Zicntr,Zihpm,Zihintpause,Zba,Zbb,Zbs,Zicond",
+  "exclude_extensions": "Sm",
+  "output_dir": "eriscv-m2/compliance/riscv-arch-test/generated",
+  "addr_width": 17,
+  "runtime_only": true,
+  "jobs": 8
+}

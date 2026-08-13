@@ -1,0 +1,13 @@
+Purpose: stress wrong-path side-effect kill on branch and trap redirects.
+Memory model: fixed 1-cycle instruction and data memory.
+
+Checks:
+1. sw x3 initializes data memory word 3 to 0x55.
+2. A taken beq skips and flushes a wrong-path store to the same word.
+3. ECALL redirects to mtvec=0x80 while a younger store is in the pipe.
+4. The handler reads mcause and mepc, advances mepc by 8, and returns after the younger store.
+5. lw x5 confirms neither wrong-path store cleared data memory word 3.
+
+Expected output:
+x2=00000080 x3=00000055 x4=0000002c x5=00000055
+x6=0000000b x7=00000020 x8=00000028 x9=00000001

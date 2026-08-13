@@ -1,0 +1,83 @@
+# eRISCV-MCU SoC configuration options
+# Copyright (c) 2024 eRISCV-MCU Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_ERISCV_MCU
+	bool "eRISCV-MCU SoC"
+	select RISCV
+	select RISCV_PRIVILEGED
+	select RISCV_HAS_PLIC
+	select 32BIT
+	select ATOMIC_OPERATIONS_C
+	select RISCV_ISA_RV32I
+	select RISCV_ISA_EXT_M
+	select RISCV_ISA_EXT_C
+	select RISCV_ISA_EXT_ZICSR
+	select RISCV_ISA_EXT_ZIFENCEI
+	select INCLUDE_RESET_VECTOR
+	help
+	  eRISCV-M2 is an educational RV32IMFC MCU-class SoC with PMP, standard B,
+	  Zicond, Zcf, DMA, and System SRAM. This Zephyr port selects the integer ISA
+	  subset until its task-context save/restore supports F registers.
+
+if SOC_ERISCV_MCU
+
+config UART_ERISCV
+	bool "eRISCV UART driver"
+	default y
+	depends on DT_HAS_ERISCV_UART0_ENABLED
+	select SERIAL_HAS_DRIVER
+	select SERIAL_SUPPORT_INTERRUPT
+
+config UART_ERISCV_BAUD_DIVISOR
+	int "eRISCV UART baud divisor"
+	default 868
+	range 1 4294967295
+	depends on UART_ERISCV
+	help
+	  Peripheral-clock cycles per UART bit. The 100 MHz hardware clock uses
+	  868 for 115200 baud. Simulation may override this with a smaller value.
+
+config GPIO_ERISCV
+	bool "eRISCV GPIO driver"
+	default y
+	depends on DT_HAS_ERISCV_GPIO0_ENABLED
+	select GPIO
+	select GPIO_HAS_DRIVER
+
+config COUNTER_ERISCV
+	bool "eRISCV APB timer driver"
+	default y
+	depends on DT_HAS_ERISCV_TIMER0_ENABLED
+	select COUNTER
+
+config WDT_ERISCV
+	bool "eRISCV watchdog driver"
+	default y
+	depends on DT_HAS_ERISCV_WDT0_ENABLED
+	select WDT
+
+config SPI_ERISCV
+	bool "eRISCV SPI controller driver"
+	default y
+	depends on DT_HAS_ERISCV_SPI0_ENABLED
+	select SPI
+
+config ERISCV_UART_IRQ_CONSOLE
+	bool "eRISCV UART interrupt-driven console TX"
+	default y
+	depends on UART_ERISCV && UART_CONSOLE && UART_INTERRUPT_DRIVEN && PRINTK
+	help
+	  Replace the normal polling console TX hook after kernel startup with an
+	  interrupt-driven UART TX ring buffer. The standard polling hook remains
+	  active during early startup.
+
+config ERISCV_MCU_WFI_CLOCK_GATING
+	bool "Gate the core clock while Zephyr idle executes WFI"
+	default n
+	help
+	  Enable CLK_RST.SLEEP_CTRL.WFI_SLEEP_EN during early SoC initialization.
+	  Keep this disabled by default; applications should enable it only after
+	  their wake-source and idle behavior have been validated.
+
+endif # SOC_ERISCV_MCU

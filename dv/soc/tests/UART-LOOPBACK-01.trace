@@ -1,0 +1,4 @@
+Configure UART0 BAUDDIV=8 and CTRL=TXEN|RXEN.
+Poll STATUS.tx_ready, write TXDATA=0x55, and let the TB decode uart_tx_o.
+Poll STATUS.rx_valid after the TB drives uart_rx_i=0xa5.
+Read RXDATA into x5 for the expected-register oracle.

@@ -1,0 +1,4 @@
+Debug 1.0 minimal DMI-level abstract-command smoke.
+Program initializes x5=0x12345678 and loops.
+The SoC TB drives the Debug Module DMI inputs directly, asserts dmactive/haltreq, waits for halted status, reads x5 through abstract Access Register, writes x6 through abstract Access Register, writes/reads dpc, reads dcsr, resumes, then checks x5/x6.
+This is not a full JTAG TAP/DTM serial scan test.

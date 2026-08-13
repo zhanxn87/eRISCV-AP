@@ -1,0 +1,3 @@
+Program writes SPI0.TXDATA=0xa5 and polls STATUS.done.
+The TB SPI slave checks MOSI=0xa5 and drives MISO=0x3c.
+The program reads RXDATA into x10 and STATUS into x11.

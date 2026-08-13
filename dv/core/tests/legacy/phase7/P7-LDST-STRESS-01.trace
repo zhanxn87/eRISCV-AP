@@ -1,0 +1,15 @@
+Purpose: stress load/store pipeline interactions without changing RTL.
+Memory model: data memory has the fixed 1-cycle read latency used by the Phase 5/6 baseline.
+
+Checks:
+1. lw x3 followed immediately by addi x4 requires the load-use bubble.
+2. add x5 consumes the load result and the following ALU result through forwarding.
+3. sw x5 immediately after x5 is produced checks store-data forwarding.
+4. A taken branch flushes the wrong-path store that would clear memory word 1.
+5. lw x9 confirms the wrong-path store did not update memory.
+6. sw x10, 0(x12) checks store-address and store-data forwarding before lw x13 reads the value back.
+
+Expected output:
+x2=12345678 x3=12345678 x4=12345679 x5=2468acf1 x6=2468acf1
+x7=2468acf3 x8=00000001 x9=2468acf1 x10=2468acf4
+x11=00000008 x12=00000008 x13=2468acf4

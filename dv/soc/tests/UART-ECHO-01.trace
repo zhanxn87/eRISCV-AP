@@ -1,0 +1,3 @@
+Configure UART0 with BAUDDIV=8 and CTRL=TXEN|RXEN.
+Poll STATUS.rx_valid, read one injected RXDATA byte into x5, then poll
+STATUS.tx_ready and write x5 to TXDATA. The TB expects the same byte on TX.

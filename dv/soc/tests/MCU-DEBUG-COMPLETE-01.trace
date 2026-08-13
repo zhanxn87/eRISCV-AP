@@ -1,0 +1,3 @@
+Debug 1.0 minimal DMI-level completeness smoke.
+The TB checks dmstatus version/auth/havereset, ackhavereset, cmderr halt/resume/not-supported/exception paths, dscratch0/1 abstract access, ebreakm entry, single-step entry, and final resume.
+The TB patches the halted instruction memory loop into ebreak/addi/loop to make ebreak and step deterministic.

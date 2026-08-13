@@ -1,0 +1,8 @@
+# Vivado-generated artifacts
+vcu108/build/
+vcu108/.Xil/
+vcu108/*.jou
+vcu108/*.log
+vcu108/*.str
+vcu108/*.pb
+vcu108/*.backup.*

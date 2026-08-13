@@ -1,0 +1,3 @@
+Debug 1.0 minimal JTAG DTM/DMI smoke.
+The TB drives jtag_tck/tms/tdi pins, scans IDCODE and DTMCS, selects DMI, then performs dmactive/haltreq/status and abstract GPR read/write through the JTAG DTM and DMI CDC path.
+This is a serial DTM smoke test, not exhaustive asynchronous TCK/clk stress.

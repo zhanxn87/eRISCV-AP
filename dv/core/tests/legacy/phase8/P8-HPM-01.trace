@@ -1,0 +1,5 @@
+Configure mtvec to 0x80 and clear mhpmcounter3..6.
+Load from MCU DMEM at 0x0004_0000 followed by a dependent addi.
+Generate one taken branch control flush.
+Generate one ECALL trap and return from the handler.
+Read mhpmcounter3..6 and check the fixed event mapping.

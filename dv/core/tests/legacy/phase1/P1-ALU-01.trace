@@ -1,0 +1,19 @@
+Purpose: verify Phase 1 RV32I non-control-flow ALU decode, operand select, ALU execution, and writeback.
+Memory model: instruction memory has 1-cycle read latency; no data-memory access is expected.
+Hazard policy: producer/consumer dependencies are separated with NOPs because Phase 1 has no forwarding.
+
+Instruction flow:
+1. addi x13, x0, -16 prepares a negative operand for SRAI.
+2. addi x1, x0, 5 and addi x2, x0, 9 prepare the main ALU operands.
+3. Four NOPs allow x1/x2/x13 to reach writeback before dependent reads.
+4. R-type ALU instructions write x3..x12: ADD, SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND.
+5. OP-IMM instructions write x15..x22: SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI.
+6. LUI writes x23 and AUIPC writes x24.
+7. addi x0, x0, 7 confirms x0 remains hard-wired to zero.
+
+Expected output:
+x0=00000000 x1=00000005 x2=00000009 x3=0000000e x4=fffffffc
+x5=00000a00 x6=00000001 x7=00000001 x8=0000000c x9=00000000
+x10=00000000 x11=0000000d x12=00000001 x13=fffffff0
+x15=00000001 x16=00000000 x17=00000006 x18=00000025 x19=00000004
+x20=00000014 x21=00000002 x22=fffffffc x23=12345000 x24=00000068

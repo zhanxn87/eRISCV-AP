@@ -1,0 +1,13 @@
+{
+  "name": "eRISCV-M2 ACT4 M-mode PMP selection",
+  "config_file": "eriscv-m2/compliance/riscv-arch-test/pmp_test_config.yaml",
+  "workdir": "eriscv-m2/compliance/riscv-arch-test/work-pmp",
+  "extensions": "PMPSm",
+  "exclude_extensions": "",
+  "output_dir": "eriscv-m2/compliance/riscv-arch-test/generated",
+  "addr_width": 17,
+  "jobs": 8,
+  "exclude_test_sources": [
+    "priv/pmp/pmp32/PMPSm/pmpsm_cfg_A_tor_zero.S"
+  ]
+}

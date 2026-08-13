@@ -1,0 +1,22 @@
+{
+  "name": "eRISCV-M2 ACT4 U-mode selection",
+  "config_file": "eriscv-m2/compliance/riscv-arch-test/u_test_config.yaml",
+  "workdir": "eriscv-m2/compliance/riscv-arch-test/work-u",
+  "extensions": "U,ExceptionsU,InterruptsU,PMPU,ZicntrU",
+  "exclude_extensions": "",
+  "output_dir": "eriscv-m2/compliance/riscv-arch-test/generated",
+  "addr_width": 17,
+  "max_cycles_by_test": {
+    "U-00": 1500000
+  },
+  "exec_data_mirror_tests": [
+    "pmpu_cfg_A_off",
+    "pmpu_cfg_XWR",
+    "pmpu_mprv_check-01",
+    "pmpu_mprv_check-02",
+    "pmpu_napot_legal_lxwr-01",
+    "pmpu_napot_legal_lxwr-02",
+    "pmpu_tor_legal_lxwr"
+  ],
+  "jobs": 8
+}

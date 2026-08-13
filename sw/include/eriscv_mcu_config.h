@@ -1,0 +1,51 @@
+/* SPDX-FileCopyrightText: 2025-2026 Xianning Zhan */
+/* SPDX-License-Identifier: BSD-3-Clause */
+
+#ifndef ERISCV_MCU_CONFIG_H
+#define ERISCV_MCU_CONFIG_H
+
+/* eRISCV-M2 product configuration. Values match rtl/soc/soc_pkg.sv. */
+#define ERISCV_MCU_PROFILE_M2       1
+#define ERISCV_MCU_HAS_M_EXT          1
+#define ERISCV_MCU_HAS_F_EXT          1
+#define ERISCV_MCU_HAS_ZCF_EXT        1
+#define ERISCV_MCU_HAS_ZBA_EXT        1
+#define ERISCV_MCU_HAS_ZBB_EXT        1
+#define ERISCV_MCU_HAS_ZBS_EXT        1
+#define ERISCV_MCU_HAS_ZICOND_EXT     1
+#define ERISCV_MCU_HAS_B_EXT          1
+#define ERISCV_MCU_HAS_PMP            1
+#define ERISCV_MCU_PMP_ENTRIES        16u
+#define ERISCV_MCU_SOC_CLOCK_HZ       100000000u
+#define ERISCV_MCU_UART_BOARD_BAUD    115200u
+#define ERISCV_MCU_UART_BOARD_DIVISOR 868u
+#ifndef ERISCV_MCU_UART_DIVISOR
+#define ERISCV_MCU_UART_DIVISOR       8u
+#endif
+#define ERISCV_MCU_HART_COUNT       1u
+#define ERISCV_MCU_PLIC_SOURCES     32u
+#define ERISCV_MCU_UART0_PLIC_SOURCE 1u
+#define ERISCV_MCU_TIMER0_PLIC_SOURCE 2u
+#define ERISCV_MCU_SPI0_PLIC_SOURCE   3u
+#define ERISCV_MCU_WDT0_PLIC_SOURCE   4u
+#define ERISCV_MCU_DMA_PLIC_SOURCE    5u
+
+#define ERISCV_MCU_IMEM_BASE        0x10000000u
+#define ERISCV_MCU_IMEM_SIZE        0x00020000u
+#define ERISCV_MCU_DMEM_BASE        0x11000000u
+#define ERISCV_MCU_DMEM_SIZE        0x00020000u
+#define ERISCV_MCU_BOOT_ADDR        ERISCV_MCU_IMEM_BASE
+
+#define ERISCV_MCU_CLINT_BASE       0x02000000u
+#define ERISCV_MCU_PLIC_BASE        0x0c000000u
+#define ERISCV_MCU_UART0_BASE       0x40000000u
+#define ERISCV_MCU_GPIO0_BASE       0x40010000u
+#define ERISCV_MCU_TIMER0_BASE      0x40020000u
+#define ERISCV_MCU_SPI0_BASE        0x40030000u
+#define ERISCV_MCU_WDT0_BASE        0x40040000u
+#define ERISCV_MCU_CLK_RST_BASE     0x40050000u
+#define ERISCV_MCU_DMA_BASE          0x50000000u
+#define ERISCV_MCU_SYSTEM_SRAM_BASE  0x80000000u
+#define ERISCV_MCU_SYSTEM_SRAM_SIZE  0x00080000u
+
+#endif

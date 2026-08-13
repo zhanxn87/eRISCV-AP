@@ -1,0 +1,15 @@
+# eRISCV-MCU SoC series configuration
+# Copyright (c) 2024 eRISCV-MCU Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+config SOC_SERIES_ERISCV_MCU
+	bool "eRISCV-MCU Series"
+	select RISCV
+	select RISCV_PRIVILEGED
+	select 32BIT
+	select SOC_FAMILY_RISCV_PRIVILEGE
+	help
+	  eRISCV-MCU is an educational RISC-V MCU-class SoC series.
+
+rsource "../eriscv_mcu/Kconfig.soc"
+rsource "../eriscv_mcu/Kconfig.defconfig"
