@@ -54,11 +54,13 @@ module decoder
 
     unique case (opcode)
       7'b000_1111: begin
-        // FENCE is an ordering NOP. FENCE.I additionally asks the core to
-        // discard any prefetched instruction and refetch after the fence.
+        // Both fence forms drain the D-side memory system. FENCE.I
+        // additionally asks the core to discard any prefetched instruction
+        // and refetch after the fence.
         if (funct3 == 3'b000 || funct3 == 3'b001) begin
           o_id_ex.valid         = i_valid;
           o_id_ex.illegal_instr = 1'b0;
+          o_id_ex.fence         = 1'b1;
           o_id_ex.fence_i       = (funct3 == 3'b001);
         end
       end
@@ -320,6 +322,42 @@ module decoder
           default: begin
           end
         endcase
+      end
+      7'b010_1111: begin // RV64A: LR/SC and AMO.W/AMO.D
+        // AMOs use rs1 directly as their effective address.  LR requires an
+        // all-zero rs2 encoding; every AMO returns its old value through the
+        // ordinary MEM writeback path, while SC returns its success code.
+        o_id_ex.op_a_sel = OP_A_RS1;
+        o_id_ex.op_b_sel = OP_B_IMM;
+        o_id_ex.alu_op   = ALU_ADD;
+        o_id_ex.mem_load = 1'b1;
+        o_id_ex.mem_type = funct3;
+        o_id_ex.rd_we    = 1'b1;
+        o_id_ex.wb_sel   = WB_MEM;
+        o_id_ex.atomic_aq = i_inst[26];
+        o_id_ex.atomic_rl = i_inst[25];
+        if (funct3 == 3'b010 || funct3 == 3'b011) begin
+          unique case (i_inst[31:27])
+            5'b00010: begin // LR.W / LR.D
+              if (i_inst[24:20] == 5'd0) begin
+                o_id_ex.valid         = i_valid;
+                o_id_ex.illegal_instr = 1'b0;
+                o_id_ex.atomic_op     = ATOMIC_LR;
+              end
+            end
+            5'b00011: begin o_id_ex.valid = i_valid; o_id_ex.illegal_instr = 1'b0; o_id_ex.atomic_op = ATOMIC_SC;   end
+            5'b00001: begin o_id_ex.valid = i_valid; o_id_ex.illegal_instr = 1'b0; o_id_ex.atomic_op = ATOMIC_SWAP; end
+            5'b00000: begin o_id_ex.valid = i_valid; o_id_ex.illegal_instr = 1'b0; o_id_ex.atomic_op = ATOMIC_ADD;  end
+            5'b00100: begin o_id_ex.valid = i_valid; o_id_ex.illegal_instr = 1'b0; o_id_ex.atomic_op = ATOMIC_XOR;  end
+            5'b01100: begin o_id_ex.valid = i_valid; o_id_ex.illegal_instr = 1'b0; o_id_ex.atomic_op = ATOMIC_AND;  end
+            5'b01000: begin o_id_ex.valid = i_valid; o_id_ex.illegal_instr = 1'b0; o_id_ex.atomic_op = ATOMIC_OR;   end
+            5'b10000: begin o_id_ex.valid = i_valid; o_id_ex.illegal_instr = 1'b0; o_id_ex.atomic_op = ATOMIC_MIN;  end
+            5'b10100: begin o_id_ex.valid = i_valid; o_id_ex.illegal_instr = 1'b0; o_id_ex.atomic_op = ATOMIC_MAX;  end
+            5'b11000: begin o_id_ex.valid = i_valid; o_id_ex.illegal_instr = 1'b0; o_id_ex.atomic_op = ATOMIC_MINU; end
+            5'b11100: begin o_id_ex.valid = i_valid; o_id_ex.illegal_instr = 1'b0; o_id_ex.atomic_op = ATOMIC_MAXU; end
+            default: begin end
+          endcase
+        end
       end
       7'b000_0111: begin // FLW / FLD
         if (funct3 == 3'b010 || funct3 == 3'b011) begin

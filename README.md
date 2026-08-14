@@ -1,32 +1,41 @@
-# eRISCV-M2
+# eRISCV-AP
 
-`eriscv-m2` is the cacheless performance MCU product. Its frozen contract is
-`RV32IMFC_Zicsr_Zifencei_Zicntr_Zihpm_Zihintpause_Zba_Zbb_Zbs_Zicond_Zcf` (standard B plus Zicond) with `ilp32f`, M/U modes, the common 32-source PLIC
-v1.0.0 and Debug 1.0 Minimal platform, and the common 16-entry PMP
-contract.
+eRISCV-AP is an RV64GC application-processor project targeting VCU108 DDR4.
+The implemented AP boundary has one scalar in-order hart tile, private 32 KiB
+I/D caches, a DDR-facing cacheable-memory subsystem, and an independent
+uncached peripheral subsystem.
 
-It adds a faster core, single-precision FPU, ITCM/DTCM, shared System SRAM,
-and a single generic DMA channel. The channel supports direct System
-SRAM-to-System SRAM copies, 32-byte linked descriptors, and a fixed UART0 TX
-byte-stream endpoint; UART RX, SPI, and Timer endpoints remain deferred. It
-deliberately uses directly addressed memories rather than any cache mechanism.
-B is implemented as Zba/Zbb/Zbs; Zicond provides branchless conditional-zero operations. Zbc, D, and Zfa are deferred. The FPU uses a pinned, product-local CVFPU
-snapshot with one documented M2-local FMA underflow correctness patch; it is
-therefore not an unmodified top-level third-party dependency. See the
-[CVFPU vendor lock](rtl/vendor/cvfpu/LOCK.md) for provenance and scope.
+## Current implementation
+
+`ap_soc` is now composed as:
+
+```text
+ap_cluster / ap_hart_tile
+  ├── Boot ROM + RV64GC core
+  ├── 32 KiB I-Cache -> axi_mem
+  ├── 32 KiB D-Cache -> axi_mem
+  └── uncached device master -> axi_periph
+ap_memory_system       (I$, D$, reserved Ethernet DMA -> DDR)
+ap_peripheral_subsystem (uncached AXI pass-through; decode is pending)
+ap_ethernet_subsystem   (DMA/IRQ boundary reserved; MAC/DMA is pending)
+```
+
+`axi_mem` and `axi_periph` are independent at the hart-tile boundary; no shared
+cache/MMIO ingress mux remains. `ap_memory_system` exports DDR only and returns
+DECERR for accidental non-DDR traffic. The SoC smoke suite drives both paths
+from real Boot ROM instructions:
+
+- Boot ROM -> I-Cache -> `axi_mem` -> DDR, using an 8-beat 64-bit line fill.
+- Boot ROM -> uncached `axi_periph`, while rejecting a DDR cache request.
+
+The current RV64GC core and physical L1-cache milestone are not a Linux-capable
+platform. S-mode, delegation, `satp`, Sv39, CLINT/PLIC/APB decode, DDR/MIG,
+boot firmware, Ethernet DMA, and multi-hart coherence remain to be implemented.
 
 ## Start Here
 
-- [Architecture contract](docs/eriscv-m2-architecture.md)
-- [Verification contract](docs/eriscv-m2-verification.md)
-- [Family product manual](https://eriscv-mcu-product-manual.zhanxnse.chatgpt.site/products/eriscv-m2)
-- [Family evidence snapshot](../docs/Verification/eriscv-mcu-simulation-evidence-snapshot.md)
-- [Design verification inventory](dv/README.md)
-- [ACT4 profile](compliance/riscv-arch-test/README.md)
-- [BSP, DMA driver, and examples](sw/README.md)
-- [DMA descriptor ABI](docs/eriscv-m2-dma-descriptor-spec.md)
-- [FPGA VCU108 flow](fpga/vcu108/README.md)
-
-Run `make eriscv-m2-full` from the repository root for the product-level
-regression entry point. FPGA implementation and physical-board status are
-separate evidence; see [the family documentation map](../docs/README.md).
+- [RV64GC system architecture specification](docs/eriscv-ap-rv64gc-system-spec.md)
+- [RV64GC core migration contract](docs/rv64gc-core-migration.md)
+- [AP architecture diagram](docs/eRISCV-AP%20V3-64B.png)
+- [Core verification](dv/core/README.md)
+- [VCU108 integration](fpga/vcu108/README.md)

@@ -22,11 +22,19 @@ module mem_stage #(
   input  logic        data_resp_valid_i,
   input  logic [63:0] data_rdata_i,
   input  logic        data_err_i,
+  // Serialized FENCE completion. data_fence_o remains asserted until the
+  // memory system reports that all prior writes are globally observable.
+  output logic        data_fence_o,
+  input  logic        data_fence_done_i,
+  input  logic        data_fence_err_i,
   output logic        data_req_o,
   output logic [PADDR_W_P-1:0] data_addr_o,
   output logic [63:0] data_wdata_o,
   output logic        data_we_o,
   output logic [7:0]  data_be_o,
+  output atomic_op_e  data_atomic_op_o,
+  output logic        data_atomic_aq_o,
+  output logic        data_atomic_rl_o,
 
   // Optional local-memory read completion (SoC -> MEM)
   input  logic        lmem_resp_valid_i,
@@ -56,6 +64,7 @@ module mem_stage #(
   logic [7:0] load_be;
   xlen_t       load_data;
   logic mem_op;
+  logic fence_response;
   logic load_store_data_match;
 
   // Normal D-bus or local-memory response selection
@@ -73,7 +82,9 @@ module mem_stage #(
   // Memory operation and response qualification
   // ---------------------------------------------------------------------------
   assign addr_offset = ex_mem_i.data_addr[2:0];
-  assign mem_op = ex_mem_i.valid & (ex_mem_i.mem_load | ex_mem_i.mem_store);
+  assign mem_op = ex_mem_i.valid & (ex_mem_i.mem_load | ex_mem_i.mem_store |
+                                    (ex_mem_i.atomic_op != ATOMIC_NONE) |
+                                    ex_mem_i.fence);
   // A fabric target may complete an accepted store in the request cycle.
   // This remains an address-agnostic core-side handshake: a response matches
   // either an outstanding request or the request issued in this cycle.
@@ -82,12 +93,14 @@ module mem_stage #(
   // load packet is allowed to leave EX/MEM.
   assign lmem_response_o = ex_mem_i.lmem_load &&
                            (lmem_resp_valid_i || lmem_response_hold_q);
-  assign mem_response_valid = lmem_response_o ||
-                              (data_resp_valid_i & (mem_pending_q | data_req_o));
-  assign response_rdata = lmem_response_o ?
+  assign fence_response = ex_mem_i.valid && ex_mem_i.fence && data_fence_done_i;
+  assign mem_response_valid = ex_mem_i.fence ? fence_response :
+                              (lmem_response_o ||
+                               (data_resp_valid_i & (mem_pending_q | data_req_o)));
+  assign response_rdata = ex_mem_i.fence ? '0 : lmem_response_o ?
                         (lmem_resp_valid_i ? lmem_rdata_i : lmem_response_data_q) :
                         data_rdata_i;
-  assign response_err = lmem_response_o ?
+  assign response_err = ex_mem_i.fence ? data_fence_err_i : lmem_response_o ?
                       (lmem_resp_valid_i ? lmem_err_i : lmem_response_err_q) :
                       data_err_i;
   assign shifted_load_data = response_rdata >> (addr_offset * 8);
@@ -189,11 +202,16 @@ module mem_stage #(
   // A request is issued once per EX/MEM packet and held pending until response.
   // data_req_ready_i is the bus-admission qualifier.
   // ---------------------------------------------------------------------------
-  assign data_req_o   = mem_op && !ex_mem_i.lmem_load && !mem_pending_q && data_req_ready_i;
+  assign data_fence_o = ex_mem_i.valid && ex_mem_i.fence;
+  assign data_req_o   = mem_op && !ex_mem_i.fence && !ex_mem_i.lmem_load &&
+                        !mem_pending_q && data_req_ready_i;
   assign data_addr_o  = ex_mem_i.data_addr[PADDR_W_P-1:0];
   assign data_wdata_o = store_wdata;
   assign data_we_o    = mem_op && ex_mem_i.mem_store;
-  assign data_be_o    = ex_mem_i.mem_store ? store_be : load_be;
+  assign data_be_o    = (ex_mem_i.mem_store || (ex_mem_i.atomic_op != ATOMIC_NONE)) ? store_be : load_be;
+  assign data_atomic_op_o = ex_mem_i.atomic_op;
+  assign data_atomic_aq_o = ex_mem_i.atomic_aq;
+  assign data_atomic_rl_o = ex_mem_i.atomic_rl;
 
   // ---------------------------------------------------------------------------
   // MEM/WB packet construction

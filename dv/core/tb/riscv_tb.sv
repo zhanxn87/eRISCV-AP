@@ -32,6 +32,7 @@ module riscv_tb #(
   string expected_regs_file;
   string reference_output_file;
   string data_mem_file;
+  string fence_check_file;
   string dump_file;
   int unsigned max_cycles;
   int unsigned sig_base;
@@ -50,13 +51,20 @@ module riscv_tb #(
   int reset_on_muldiv_busy;
   int completion_reg;
   xlen_t       completion_value;
+  paddr_t      fence_check_addr;
+  xlen_t       fence_check_value;
   int unsigned run_cycle;
   bit has_expected_regs;
   bit has_reference_output;
   bit has_act_oracle;
   bit has_data_mem_file;
+  bit has_fence_check;
   bit has_completion;
   bit completion_seen;
+  bit fence_check_seen;
+  xlen_t fence_check_actual;
+  int fence_check_handle;
+  int fence_check_status;
   bit saw_debug_halted;
   bit debug_resume_armed;
   bit debug_resume_sent;
@@ -111,6 +119,17 @@ module riscv_tb #(
   always @(posedge clk) begin
     if (rst_n && dut.imem_rvalid) begin
       check(!$isunknown(dut.imem_rdata), "instruction memory returned unknown data");
+    end
+    if (rst_n && fetch_enable_i && has_fence_check &&
+        dut.cache_flush_done && !fence_check_seen) begin
+      fence_check_actual = dut.cache_backing_mem_i.mem[
+          fence_check_addr[DMEM_WORD_ADDR_WIDTH+2:6]][fence_check_addr[5:3] * 64 +: 64];
+      check(fence_check_actual === fence_check_value,
+            $sformatf("FENCE writeback at %012h expected %016h, got %016h",
+                      fence_check_addr, fence_check_value, fence_check_actual));
+      $display("TB FENCE: backing[%012h]=%016h PASS",
+               fence_check_addr, fence_check_actual);
+      fence_check_seen = 1'b1;
     end
   end
 
@@ -231,6 +250,20 @@ module riscv_tb #(
     has_expected_regs = $value$plusargs("expected_regs_file=%s", expected_regs_file);
     has_reference_output = $value$plusargs("reference_output_file=%s", reference_output_file);
     has_data_mem_file = $value$plusargs("data_mem_file=%s", data_mem_file);
+    has_fence_check = $value$plusargs("fence_check_file=%s", fence_check_file);
+    fence_check_seen = 1'b0;
+    if (has_fence_check) begin
+      fence_check_handle = $fopen(fence_check_file, "r");
+      if (fence_check_handle == 0) begin
+        $fatal(1, "Unable to open FENCE check file: %s", fence_check_file);
+      end
+      fence_check_status = $fscanf(fence_check_handle, "%h %h\n",
+                                   fence_check_addr, fence_check_value);
+      $fclose(fence_check_handle);
+      if (fence_check_status != 2) begin
+        $fatal(1, "Malformed FENCE check file: %s", fence_check_file);
+      end
+    end
     has_completion = $value$plusargs("completion_reg=%d", completion_reg);
     if (has_completion && !$value$plusargs("completion_value=%h", completion_value)) begin
       $fatal(1, "completion_reg requires completion_value.");
@@ -323,7 +356,7 @@ module riscv_tb #(
     $readmemh(instr_mem_file, dut.instr_mem_i.sram_i.mem);
     if (has_data_mem_file) begin
       $display("TB loading data memory: %s", data_mem_file);
-      $readmemh(data_mem_file, dut.data_mem_i.sram_i.mem);
+      $readmemh(data_mem_file, dut.cache_backing_mem_i.mem);
     end
     rst_n = 1'b0;
     fetch_enable_i = 1'b0;
@@ -348,26 +381,26 @@ module riscv_tb #(
     if (has_reference_output) begin
       repeat (max_cycles) begin
         @(posedge clk);
-        if (dut.data_mem_i.sram_i.mem[tohost_addr] !== '0) begin
-          $display("TB INFO: tohost reached value=%016h", dut.data_mem_i.sram_i.mem[tohost_addr]);
+        if (dut.cache_backing_mem_i.mem[tohost_addr >> 3][(tohost_addr & 7) * 64 +: 64] !== '0) begin
+          $display("TB INFO: tohost reached value=%016h", dut.cache_backing_mem_i.mem[tohost_addr >> 3][(tohost_addr & 7) * 64 +: 64]);
           break;
         end
       end
-      check(dut.data_mem_i.sram_i.mem[tohost_addr] !== '0,
+      check(dut.cache_backing_mem_i.mem[tohost_addr >> 3][(tohost_addr & 7) * 64 +: 64] !== '0,
             "tohost was not written before max_cycles expired");
     end else if (has_act_oracle) begin
       act_tohost_value = '0;
       repeat (max_cycles) begin
         @(posedge clk);
-        act_tohost_value = dut.data_mem_i.sram_i.mem[tohost_addr];
+        act_tohost_value = dut.cache_backing_mem_i.mem[tohost_addr >> 3][(tohost_addr & 7) * 64 +: 64];
         if ((act_tohost_value === tohost_pass_value) ||
             (act_tohost_value === tohost_fail_value)) begin
           $display("TB INFO: ACT terminal tohost value=%016h", act_tohost_value);
           break;
         end
       end
-      check((dut.data_mem_i.sram_i.mem[tohost_addr] === tohost_pass_value) ||
-            (dut.data_mem_i.sram_i.mem[tohost_addr] === tohost_fail_value),
+      check((dut.cache_backing_mem_i.mem[tohost_addr >> 3][(tohost_addr & 7) * 64 +: 64] === tohost_pass_value) ||
+            (dut.cache_backing_mem_i.mem[tohost_addr >> 3][(tohost_addr & 7) * 64 +: 64] === tohost_fail_value),
             "ACT terminal tohost value was not seen before max_cycles expired");
     end else begin
       completion_seen = 1'b0;
@@ -391,29 +424,33 @@ module riscv_tb #(
     if (has_reference_output) begin
       compare_reference_output(reference_output_file, sig_base);
     end
+    if (has_fence_check) begin
+      check(fence_check_seen, "FENCE did not complete before testcase end");
+      $display("TB FENCE: completion observed PASS");
+    end
     if (has_act_oracle) begin
-      if (dut.data_mem_i.sram_i.mem[tohost_addr] === tohost_fail_value) begin
+      if (dut.cache_backing_mem_i.mem[tohost_addr >> 3][(tohost_addr & 7) * 64 +: 64] === tohost_fail_value) begin
         $display("TB ACT DIAG: trap_subtype=%016h trap_mode=%016h trap_actual_value=%016h trap_expected_value=%016h",
-                 dut.data_mem_i.sram_i.mem['h11398],
-                 dut.data_mem_i.sram_i.mem['h11399],
-                 dut.data_mem_i.sram_i.mem['h1139a],
-                 dut.data_mem_i.sram_i.mem['h1139c]);
+                 dut.cache_backing_mem_i.mem['h11398 >> 3]['h0],
+                 dut.cache_backing_mem_i.mem['h11399 >> 3][64],
+                 dut.cache_backing_mem_i.mem['h1139a >> 3][128],
+                 dut.cache_backing_mem_i.mem['h1139c >> 3][256]);
         $display("TB ACT DIAG: trap_actual_offset=%016h trap_expected_offset=%016h trap_fail_str_ptr=%016h",
-                 dut.data_mem_i.sram_i.mem['h1139e],
-                 dut.data_mem_i.sram_i.mem['h113a0],
-                 dut.data_mem_i.sram_i.mem['h113a2]);
+                 dut.cache_backing_mem_i.mem['h1139e >> 3][384],
+                 dut.cache_backing_mem_i.mem['h113a0 >> 3][0],
+                 dut.cache_backing_mem_i.mem['h113a2 >> 3][128]);
         $display("TB ACT DIAG: mepc=%016h mcause=%016h mtval=%016h mstatus=%016h",
-                 dut.data_mem_i.sram_i.mem['h113a6],
-                 dut.data_mem_i.sram_i.mem['h113a8],
-                 dut.data_mem_i.sram_i.mem['h113aa],
-                 dut.data_mem_i.sram_i.mem['h113ac]);
+                 dut.cache_backing_mem_i.mem['h113a6 >> 3][384],
+                 dut.cache_backing_mem_i.mem['h113a8 >> 3][0],
+                 dut.cache_backing_mem_i.mem['h113aa >> 3][128],
+                 dut.cache_backing_mem_i.mem['h113ac >> 3][256]);
       end
-      check(dut.data_mem_i.sram_i.mem[tohost_addr] === tohost_pass_value,
+      check(dut.cache_backing_mem_i.mem[tohost_addr >> 3][(tohost_addr & 7) * 64 +: 64] === tohost_pass_value,
             $sformatf("ACT tohost expected %016h, got %016h",
-                      tohost_pass_value, dut.data_mem_i.sram_i.mem[tohost_addr]));
-      check(dut.data_mem_i.sram_i.mem[tohost_addr] !== tohost_fail_value,
+                      tohost_pass_value, dut.cache_backing_mem_i.mem[tohost_addr >> 3][(tohost_addr & 7) * 64 +: 64]));
+      check(dut.cache_backing_mem_i.mem[tohost_addr >> 3][(tohost_addr & 7) * 64 +: 64] !== tohost_fail_value,
             $sformatf("ACT tohost reached fail value %016h", tohost_fail_value));
-      $display("TB ACT: tohost=%016h PASS", dut.data_mem_i.sram_i.mem[tohost_addr]);
+      $display("TB ACT: tohost=%016h PASS", dut.cache_backing_mem_i.mem[tohost_addr >> 3][(tohost_addr & 7) * 64 +: 64]);
     end
     if (expected_debug_cause >= 0) begin
       check(debug_cause === expected_debug_cause[2:0],

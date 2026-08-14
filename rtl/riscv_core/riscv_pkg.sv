@@ -31,6 +31,7 @@ package riscv_pkg;
   endfunction
 
   localparam bit HAS_M_EXT       = 1'b1;
+  localparam bit HAS_A_EXT       = 1'b1;
   localparam bit HAS_D_EXT       = 1'b1;
   localparam bit HAS_F_EXT       = 1'b1;
   localparam bit HAS_ZCA         = 1'b1;
@@ -153,6 +154,24 @@ package riscv_pkg;
     MULDIV_REMU   = 3'd7
   } muldiv_op_e;
 
+  // Atomic operations carried over the data-memory boundary.  The memory
+  // system owns the reservation set and must execute every non-LR operation
+  // as one indivisible read-modify-write transaction.
+  typedef enum logic [3:0] {
+    ATOMIC_NONE = 4'd0,
+    ATOMIC_LR   = 4'd1,
+    ATOMIC_SC   = 4'd2,
+    ATOMIC_SWAP = 4'd3,
+    ATOMIC_ADD  = 4'd4,
+    ATOMIC_XOR  = 4'd5,
+    ATOMIC_AND  = 4'd6,
+    ATOMIC_OR   = 4'd7,
+    ATOMIC_MIN  = 4'd8,
+    ATOMIC_MAX  = 4'd9,
+    ATOMIC_MINU = 4'd10,
+    ATOMIC_MAXU = 4'd11
+  } atomic_op_e;
+
   typedef enum logic [5:0] {
     ALU_ADD   = 6'd0,
     ALU_SUB   = 6'd1,
@@ -238,6 +257,9 @@ package riscv_pkg;
     logic        branch_pred_taken;
     logic        branch_pred_bht_used;
     logic        illegal_instr;
+    // A regular FENCE drains the D-side memory system.  FENCE.I also sets
+    // fence_i so IF discards a prefetched instruction and refetches it.
+    logic        fence;
     logic        fence_i;
     logic        csr_access;
     logic        csr_use_imm;
@@ -248,6 +270,9 @@ package riscv_pkg;
     logic        mem_load;
     logic        mem_store;
     logic [2:0]  mem_type;
+    atomic_op_e  atomic_op;
+    logic        atomic_aq;
+    logic        atomic_rl;
 
     // Floating-point decode, FPR operands, and rounding control
     logic        fp_op;
@@ -293,10 +318,14 @@ package riscv_pkg;
     // The SoC accepted this load at the local-memory port during EX. Its synchronous
     // response is consumed in MEM on the following cycle.
     logic        lmem_load;
+    logic        fence;
     logic [4:0]  rd_addr;
     logic        mem_load;
     logic        mem_store;
     logic [2:0]  mem_type;
+    atomic_op_e  atomic_op;
+    logic        atomic_aq;
+    logic        atomic_rl;
     logic        word_op;
 
     // FPR writeback payload and deferred FCSR flags

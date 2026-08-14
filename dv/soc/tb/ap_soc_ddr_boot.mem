@@ -1,0 +1,6 @@
+// Reset vector is Boot ROM byte address 0x80, word index 0x20.
+// x1 = 0x0000_0000_8000_0000; jalr x0, 0(x1)
+@00000020
+080000b7
+00409093
+00008067

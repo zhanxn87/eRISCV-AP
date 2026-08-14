@@ -64,9 +64,17 @@ module riscv_core #(
   output logic [63:0] data_wdata_o,
   output logic        data_we_o,
   output logic [7:0]  data_be_o,
+  output atomic_op_e  data_atomic_op_o,
+  output logic        data_atomic_aq_o,
+  output logic        data_atomic_rl_o,
   input  logic        data_resp_valid_i,
   input  logic [63:0] data_rdata_i,
   input  logic        data_err_i,
+  // FENCE cache-drain handshake. A cacheless integration may complete this
+  // immediately once its blocking D-bus has completed all older accesses.
+  output logic        data_fence_o,
+  input  logic        data_fence_done_i,
+  input  logic        data_fence_err_i,
 
   // Optional local-memory read request (core -> SoC).
   // The core does not decode the address map; an unaccepted request falls
@@ -770,11 +778,17 @@ module riscv_core #(
     .data_resp_valid_i    (data_resp_valid_i),
     .data_rdata_i         (data_rdata_i),
     .data_err_i           (data_err_i),
+    .data_fence_o         (data_fence_o),
+    .data_fence_done_i    (data_fence_done_i),
+    .data_fence_err_i     (data_fence_err_i),
     .data_req_o           (data_req_o),
     .data_addr_o          (data_addr_o),
     .data_wdata_o         (data_wdata_o),
     .data_we_o            (data_we_o),
     .data_be_o            (data_be_o),
+    .data_atomic_op_o     (data_atomic_op_o),
+    .data_atomic_aq_o     (data_atomic_aq_o),
+    .data_atomic_rl_o     (data_atomic_rl_o),
     // Optional local-memory read completion (SoC -> MEM)
     .lmem_resp_valid_i    (lmem_resp_valid),
     .lmem_rdata_i         (lmem_rdata),

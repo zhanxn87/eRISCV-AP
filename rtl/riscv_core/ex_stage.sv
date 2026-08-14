@@ -342,14 +342,16 @@ module ex_stage #(
   // Memory-access qualification shared by local-memory request paths.
   // ---------------------------------------------------------------------------
   assign ex_mem_data_access = ex_complete && control_allows_side_effects &&
-                              (id_ex_i.mem_load || id_ex_i.mem_store);
+                              (id_ex_i.mem_load || id_ex_i.mem_store ||
+                               (id_ex_i.atomic_op != ATOMIC_NONE));
 
   // ---------------------------------------------------------------------------
   // Local-memory load request
   // ---------------------------------------------------------------------------
   // The SoC accepts only DTCM candidates from the dedicated load address
   // path; all other targets retain the normal MEM-stage D-bus path.
-  assign lmem_req_o  = ex_mem_data_access && id_ex_i.mem_load;
+  assign lmem_req_o  = ex_mem_data_access && id_ex_i.mem_load &&
+                       (id_ex_i.atomic_op == ATOMIC_NONE);
   assign lmem_addr_o = mem_addr[PADDR_W-1:0];
 
   // M2 FPU legality is independent of memory-protection policy.
@@ -376,7 +378,8 @@ module ex_stage #(
     .csr_illegal_access_i       (csr_illegal_access),
     .dcsr_ebreakm_i             (dcsr_ebreakm),
     // Resolved EX data result
-    .alu_result_i               ((id_ex_i.mem_load || id_ex_i.mem_store) ? mem_addr : alu_result),
+    .alu_result_i               ((id_ex_i.mem_load || id_ex_i.mem_store ||
+                                  (id_ex_i.atomic_op != ATOMIC_NONE)) ? mem_addr : alu_result),
     // Instruction-side access fault and interrupt arbitration
     .instruction_access_fault_i (1'b0),
     .interrupt_ready_i          (interrupt_ready),
@@ -401,11 +404,15 @@ module ex_stage #(
   // address operand, then leave entry arbitration below with the other EX
   // outcomes. M1 retains the same trigger policy as M0.
   assign trigger_match_value = trigger_mcontrol[19] ? rs2_data :
-                               ((id_ex_i.mem_load || id_ex_i.mem_store) ? mem_addr : id_ex_i.pc);
+                               ((id_ex_i.mem_load || id_ex_i.mem_store ||
+                                 (id_ex_i.atomic_op != ATOMIC_NONE)) ? mem_addr : id_ex_i.pc);
   assign mcontrol_hit = ex_accept && !debug_mode_i &&
-                        ((id_ex_i.mem_load && trigger_mcontrol[0]) ||
-                         (id_ex_i.mem_store && trigger_mcontrol[1]) ||
-                         (!id_ex_i.mem_load && !id_ex_i.mem_store && trigger_mcontrol[2])) &&
+                        (((id_ex_i.mem_load && (id_ex_i.atomic_op == ATOMIC_NONE)) ||
+                          (id_ex_i.atomic_op == ATOMIC_LR)) && trigger_mcontrol[0] ||
+                         ((id_ex_i.mem_store || ((id_ex_i.atomic_op != ATOMIC_NONE) &&
+                           (id_ex_i.atomic_op != ATOMIC_LR))) && trigger_mcontrol[1]) ||
+                         (!id_ex_i.mem_load && !id_ex_i.mem_store &&
+                          (id_ex_i.atomic_op == ATOMIC_NONE) && trigger_mcontrol[2])) &&
                         (trigger_match_value == trigger_tdata2);
   assign icount_hit = ex_accept && !debug_mode_i &&
                       (trigger_icount[13:0] == 14'd1);
@@ -709,12 +716,18 @@ module ex_stage #(
     ex_mem_d.store_rs2_addr = id_ex_i.rs2_addr;
     ex_mem_d.load_store_data_bypass = load_store_data_match;
     ex_mem_d.lmem_load = lmem_req_o && lmem_accept_i;
+    ex_mem_d.fence     = ex_mem_d.valid && control_allows_side_effects &&
+                         id_ex_i.fence;
     ex_mem_d.rd_addr   = id_ex_i.rd_addr;
     ex_mem_d.mem_load  = ex_mem_d.valid && control_allows_side_effects &&
                          id_ex_i.mem_load;
     ex_mem_d.mem_store = ex_mem_d.valid && control_allows_side_effects &&
                          id_ex_i.mem_store;
     ex_mem_d.mem_type  = id_ex_i.mem_type;
+    ex_mem_d.atomic_op = (ex_mem_d.valid && control_allows_side_effects) ?
+                          id_ex_i.atomic_op : ATOMIC_NONE;
+    ex_mem_d.atomic_aq = id_ex_i.atomic_aq;
+    ex_mem_d.atomic_rl = id_ex_i.atomic_rl;
     ex_mem_d.fp_write  = ex_mem_d.valid && id_ex_i.fp_write;
     ex_mem_d.fp_dirty  = ex_mem_d.valid && id_ex_i.fp_access;
     ex_mem_d.fp_dst_fmt = id_ex_i.fp_dst_fmt;

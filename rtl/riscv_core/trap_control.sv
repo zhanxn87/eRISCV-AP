@@ -51,6 +51,8 @@ module trap_control (
   logic wfi_illegal_trap;
   logic load_addr_misaligned;
   logic store_addr_misaligned;
+  logic atomic_load;
+  logic atomic_store;
 
   // ---------------------------------------------------------------------------
   // Raw synchronous exception qualifications
@@ -78,6 +80,9 @@ module trap_control (
   assign wfi_illegal_trap = ex_accept_i && (id_ex_i.sys_op == SYS_WFI) &&
                             (privilege_mode_i == PRIV_U) && mstatus_tw_i;
   assign wfi_legal_o = !wfi_illegal_trap;
+  assign atomic_load = (id_ex_i.atomic_op == ATOMIC_LR);
+  assign atomic_store = (id_ex_i.atomic_op != ATOMIC_NONE) &&
+                        (id_ex_i.atomic_op != ATOMIC_LR);
 
   // Load/store alignment depends on the access width encoded in mem_type.
   always_comb begin
@@ -86,12 +91,22 @@ module trap_control (
     unique case (id_ex_i.mem_type)
       3'b001,
       3'b101: begin
-        load_addr_misaligned = ex_accept_i && id_ex_i.mem_load && alu_result_i[0];
-        store_addr_misaligned = ex_accept_i && id_ex_i.mem_store && alu_result_i[0];
+        load_addr_misaligned = ex_accept_i &&
+                               ((id_ex_i.mem_load && (id_ex_i.atomic_op == ATOMIC_NONE)) || atomic_load) &&
+                               alu_result_i[0];
+        store_addr_misaligned = ex_accept_i && (id_ex_i.mem_store || atomic_store) && alu_result_i[0];
       end
       3'b010: begin
-        load_addr_misaligned = ex_accept_i && id_ex_i.mem_load && (alu_result_i[1:0] != 2'b00);
-        store_addr_misaligned = ex_accept_i && id_ex_i.mem_store && (alu_result_i[1:0] != 2'b00);
+        load_addr_misaligned = ex_accept_i &&
+                               ((id_ex_i.mem_load && (id_ex_i.atomic_op == ATOMIC_NONE)) || atomic_load) &&
+                               (alu_result_i[1:0] != 2'b00);
+        store_addr_misaligned = ex_accept_i && (id_ex_i.mem_store || atomic_store) && (alu_result_i[1:0] != 2'b00);
+      end
+      3'b011: begin
+        load_addr_misaligned = ex_accept_i &&
+                               ((id_ex_i.mem_load && (id_ex_i.atomic_op == ATOMIC_NONE)) || atomic_load) &&
+                               (alu_result_i[2:0] != 3'b000);
+        store_addr_misaligned = ex_accept_i && (id_ex_i.mem_store || atomic_store) && (alu_result_i[2:0] != 3'b000);
       end
       default: begin
       end

@@ -2,8 +2,14 @@
 
 ## Status
 
-In progress.  The existing `rtl/riscv_core` implementation is being widened
-in place; this is not a statement that it already implements RV64GC.
+The RV64GC M/U execution baseline is implemented and covered by directed
+core tests. This is not yet M/S/U or Linux-capable: supervisor privilege,
+delegation, `satp`, Sv39, and page-fault control are the next core milestone.
+
+The normative AP system and cache contract is
+[eRISCV-AP RV64GC System Architecture Specification](eriscv-ap-rv64gc-system-spec.md).
+This migration document defines only the core transition; it does not preserve
+legacy TCM, PMP, DMA, or address-map contracts.
 
 ## Architectural target
 
@@ -15,14 +21,14 @@ in place; this is not a statement that it already implements RV64GC.
   implementation.
 - `G` means `I`, `M`, `A`, `F`, `D`, `Zicsr`, and `Zifencei`; `C` remains
   required. Zba/Zbb/Zbs, Zicond, and Zcf are not part of the target and their
-  copied M2 encodings must trap as illegal instructions. No M2-only debug,
-  PMP, DMA, or TCM capability is implicitly part of this target.
+  encodings must trap as illegal instructions. No legacy debug, PMP, DMA, or
+  TCM capability is implicitly part of this target.
 
 ## Core boundary
 
 The RV64 core owns architectural register state, instruction decode,
 exceptions, privilege state, integer and floating-point execution, and LSU
-request generation.  It must not depend on an M2 ITCM/DTCM/System-SRAM
+request generation.  It must not depend on a legacy ITCM/DTCM/System-SRAM
 address map or on a Xilinx-specific DDR interface.
 
 The downstream memory interface must carry a 64-bit data path, byte strobes,
@@ -34,7 +40,7 @@ milestone.
 The architectural PC, GPR address arithmetic, and trap values are 64 bits.
 The initial MMU target is Sv39 (`VADDR_W = 39`), whose virtual addresses must
 be canonical; the first downstream physical-memory interface is limited to
-48 bits (`PADDR_W = 48`).  The current 32-bit M2 memory ports are a migration
+48 bits (`PADDR_W = 48`).  The current 32-bit memory ports are a migration
 artifact and must be replaced by a 64-bit-data, 48-bit-physical-address
 interface rather than silently truncating an architectural address.
 
@@ -45,17 +51,21 @@ interface rather than silently truncating an architectural address.
    64-bit PC/address and debug transport.  Add focused directed tests before
    removing RV32 checks.
 2. **Privileged RV64 baseline** — RV64 CSR widths and `misa`; preserve precise
-   exceptions and interrupt behavior.  M2 M/U/PMP behavior is a reference,
-   not a compatibility contract.
+   exceptions and interrupt behavior.  Previous M/U/PMP behavior is a
+   reference, not a compatibility contract.
 3. **A extension** — AMO and LR/SC require an explicit atomic LSU interface,
    reservation state, alignment/access-fault rules, and invalidation rules for
    future DMA writes.  Do not implement them as ordinary load/store sequences.
 4. **F/D** — widen the FPR file to `32 x 64`, configure FPnew for RV64D,
    implement NaN boxing and all F/D decode/conversion/compare/move semantics,
    then validate FCSR and precise retirement.
-5. **S-mode and Sv39** — delegation, supervisor CSRs and traps, `satp`, ITLB,
-   DTLB, PTW, access/page faults, and `SFENCE.VMA`.
-6. **Memory-system integration** — I$/D$, cache-line interface, independent
+5. **S-mode baseline** — add supervisor privilege, delegation, supervisor
+   CSRs/traps, S-level interrupt state, and `SRET`, with directed tests. This
+   must land before virtual memory is exposed.
+6. **Sv39** — add `satp`, ITLB, DTLB, PTW, canonical-address checks,
+   page/access faults, `SFENCE.VMA`, and MPRV interactions. Integrate only
+   after the physical cache path and S-mode baseline are stable.
+7. **Memory-system integration** — I$/D$, cache-line interface, independent
    AXI masters, MMIO bypass/APB bridge, DDR4/MIG, then Ethernet DMA
    non-coherence policy.
 
@@ -75,4 +85,5 @@ interface rather than silently truncating an architectural address.
 
 - Superscalar issue, out-of-order execution, cache coherence, multicore, vector
   extension, and custom ISA extensions.
-- Reusing the M2 SoC as the AP SoC.  M2 RTL remains a bootstrap reference only.
+- Reusing the legacy SoC as the AP SoC.  Legacy RTL remains a bootstrap
+  reference only.

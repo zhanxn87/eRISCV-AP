@@ -184,6 +184,10 @@ module id_stage #(
         uses_rs1_o = 1'b1;
         uses_rs2_o = 1'b1;
       end
+      7'b010_1111: begin // RV64A: LR uses rs1 only; SC/AMO use rs1 and rs2
+        uses_rs1_o = 1'b1;
+        uses_rs2_o = (decoded_instr[31:27] != 5'b00010);
+      end
       7'b111_0011: begin // CSR SYSTEM instructions using rs1
         uses_rs1_o = (decoded_instr[14:12] == 3'b001) ||
                      (decoded_instr[14:12] == 3'b010) ||

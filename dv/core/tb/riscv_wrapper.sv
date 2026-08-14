@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 // Core-level verification wrapper — NOT the delivery SoC.
-// Wraps riscv_core with instr_mem, data_mem, and clint_plic_mmio for standalone
-// core verification.  Use riscv_min_soc for the product integration.
+// Wraps riscv_core with instr_mem, D-Cache, and clint_plic_mmio for standalone
+// core verification. Use the delivery SoC for peripheral integration.
 import riscv_pkg::*;
 
 module riscv_wrapper #(
@@ -35,12 +35,34 @@ module riscv_wrapper #(
   logic [63:0] data_wdata;
   logic        data_we;
   logic [7:0]  data_be;
+  atomic_op_e  data_atomic_op;
+  logic        data_atomic_aq, data_atomic_rl;
   logic        data_resp_valid;
   logic [63:0] data_rdata;
   logic        data_err;
-  logic        sram_data_resp_valid;
-  logic [63:0] sram_data_rdata;
-  logic        sram_data_err;
+  logic        data_fence;
+  logic        cache_data_resp_valid;
+  logic [63:0] cache_data_rdata;
+  logic        cache_data_err;
+  logic        cache_flush_done, cache_flush_err;
+  logic        cache_line_req, cache_line_we, cache_line_resp_valid, cache_line_err;
+  paddr_t      cache_line_addr;
+  logic [511:0] cache_line_wdata, cache_line_rdata;
+  logic [3:0]  cache_axi_awid, cache_axi_bid, cache_axi_arid, cache_axi_rid;
+  paddr_t      cache_axi_awaddr, cache_axi_araddr;
+  logic [7:0]  cache_axi_awlen, cache_axi_arlen;
+  logic [2:0]  cache_axi_awsize, cache_axi_arsize;
+  logic [1:0]  cache_axi_awburst, cache_axi_arburst;
+  logic [3:0]  cache_axi_awcache, cache_axi_arcache;
+  logic        cache_axi_awvalid, cache_axi_awready;
+  logic        cache_axi_arvalid, cache_axi_arready;
+  logic [63:0] cache_axi_wdata, cache_axi_rdata;
+  logic [7:0]  cache_axi_wstrb;
+  logic        cache_axi_wlast, cache_axi_wvalid, cache_axi_wready;
+  logic [1:0]  cache_axi_bresp;
+  logic        cache_axi_bvalid, cache_axi_bready;
+  logic [1:0]  cache_axi_rresp;
+  logic        cache_axi_rlast, cache_axi_rvalid, cache_axi_rready;
   logic        mmio_hit;
   logic        mmio_resp_valid;
   logic [63:0] mmio_rdata;
@@ -50,12 +72,11 @@ module riscv_wrapper #(
   logic [31:0] combined_irq;
 
   assign combined_irq = irq_i | mmio_irq;
-  // This verification wrapper keeps instruction and data SRAMs separate.
-  // The D-bus is therefore always served by the 64-bit data memory or MMIO;
-  // it never truncates an RV64 transaction through the 32-bit instruction SRAM.
-  assign data_resp_valid = mmio_hit ? mmio_resp_valid : sram_data_resp_valid;
-  assign data_rdata      = mmio_hit ? mmio_rdata : sram_data_rdata;
-  assign data_err        = mmio_hit ? mmio_err : sram_data_err;
+  // The core-facing cache path is active for ordinary memory. MMIO bypasses
+  // it, and atomics to MMIO fail instead of issuing an RMW sequence.
+  assign data_resp_valid = mmio_hit ? mmio_resp_valid : cache_data_resp_valid;
+  assign data_rdata      = mmio_hit ? mmio_rdata : cache_data_rdata;
+  assign data_err        = mmio_hit ? (mmio_err | (data_atomic_op != ATOMIC_NONE)) : cache_data_err;
 
   riscv_core riscv_core_i (
     .clk              (clk),
@@ -84,9 +105,15 @@ module riscv_wrapper #(
     .data_wdata_o     (data_wdata),
     .data_we_o        (data_we),
     .data_be_o        (data_be),
+    .data_atomic_op_o (data_atomic_op),
+    .data_atomic_aq_o (data_atomic_aq),
+    .data_atomic_rl_o (data_atomic_rl),
     .data_resp_valid_i(data_resp_valid),
     .data_rdata_i     (data_rdata),
     .data_err_i       (data_err),
+    .data_fence_o     (data_fence),
+    .data_fence_done_i(cache_flush_done),
+    .data_fence_err_i (cache_flush_err),
     // The standalone wrapper intentionally exercises the normal D-bus path.
     // Product SoC integration owns the optional DTCM early-load port.
     .lmem_req_o       (),
@@ -147,23 +174,78 @@ module riscv_wrapper #(
     .irq_o       (mmio_irq)
   );
 
-  data_mem #(
-    .ADDR_WIDTH(DMEM_WORD_ADDR_WIDTH),
-    .DATA_WIDTH(64),
-    .READ_LATENCY(DMEM_READ_LATENCY)
-  ) data_mem_i (
+  dcache data_mem_i (
     .clk      (clk),
     .rst_n    (rst_n),
-    .req_i    (data_req && !mmio_hit),
-    .we_i     (data_we && !mmio_hit),
-    .be_i     (data_be),
-    // Memory ADDR_WIDTH is a doubleword-index width; drop byte-lane bits [2:0].
-    .addr_i   (data_addr[DMEM_WORD_ADDR_WIDTH+2:3]),
-    .wdata_i  (data_wdata),
-    .resp_valid_o(sram_data_resp_valid),
-    .resp_write_o(),
-    .rdata_o     (sram_data_rdata),
-    .err_o       (sram_data_err)
+    .cpu_req_i(data_req && !mmio_hit),
+    .cpu_addr_i(data_addr),
+    .cpu_we_i     (data_we),
+    .cpu_be_i     (data_be),
+    .cpu_wdata_i  (data_wdata),
+    .cpu_atomic_op_i(data_atomic_op),
+    .cpu_resp_valid_o(cache_data_resp_valid),
+    .cpu_rdata_o     (cache_data_rdata),
+    .cpu_err_o       (cache_data_err),
+    .flush_i         (data_fence),
+    .flush_done_o    (cache_flush_done),
+    .flush_err_o     (cache_flush_err),
+    .line_req_o      (cache_line_req),
+    .line_we_o       (cache_line_we),
+    .line_addr_o     (cache_line_addr),
+    .line_wdata_o    (cache_line_wdata),
+    .line_resp_valid_i(cache_line_resp_valid),
+    .line_rdata_i    (cache_line_rdata),
+    .line_err_i      (cache_line_err)
+  );
+
+  cache_axi4_line_adapter data_cache_axi4_i (
+    .clk(clk), .rst_n(rst_n),
+    .line_req_i(cache_line_req), .line_we_i(cache_line_we),
+    .line_addr_i(cache_line_addr), .line_wdata_i(cache_line_wdata),
+    .line_resp_valid_o(cache_line_resp_valid), .line_rdata_o(cache_line_rdata),
+    .line_err_o(cache_line_err),
+    .m_axi_awid_o(cache_axi_awid), .m_axi_awaddr_o(cache_axi_awaddr),
+    .m_axi_awlen_o(cache_axi_awlen), .m_axi_awsize_o(cache_axi_awsize),
+    .m_axi_awburst_o(cache_axi_awburst), .m_axi_awcache_o(cache_axi_awcache),
+    .m_axi_awvalid_o(cache_axi_awvalid), .m_axi_awready_i(cache_axi_awready),
+    .m_axi_wdata_o(cache_axi_wdata), .m_axi_wstrb_o(cache_axi_wstrb),
+    .m_axi_wlast_o(cache_axi_wlast), .m_axi_wvalid_o(cache_axi_wvalid),
+    .m_axi_wready_i(cache_axi_wready),
+    .m_axi_bid_i(cache_axi_bid), .m_axi_bresp_i(cache_axi_bresp),
+    .m_axi_bvalid_i(cache_axi_bvalid), .m_axi_bready_o(cache_axi_bready),
+    .m_axi_arid_o(cache_axi_arid), .m_axi_araddr_o(cache_axi_araddr),
+    .m_axi_arlen_o(cache_axi_arlen), .m_axi_arsize_o(cache_axi_arsize),
+    .m_axi_arburst_o(cache_axi_arburst), .m_axi_arcache_o(cache_axi_arcache),
+    .m_axi_arvalid_o(cache_axi_arvalid), .m_axi_arready_i(cache_axi_arready),
+    .m_axi_rid_i(cache_axi_rid), .m_axi_rdata_i(cache_axi_rdata),
+    .m_axi_rresp_i(cache_axi_rresp), .m_axi_rlast_i(cache_axi_rlast),
+    .m_axi_rvalid_i(cache_axi_rvalid), .m_axi_rready_o(cache_axi_rready)
+  );
+
+  axi4_line_mem #(
+    .PADDR_W_P(PADDR_W),
+    .AXI_DATA_W_P(64),
+    .AXI_ID_W_P(4),
+    .LINE_BYTES_P(64),
+    .LINE_ADDR_W_P(DMEM_WORD_ADDR_WIDTH - 3)
+  ) cache_backing_mem_i (
+    .clk(clk), .rst_n(rst_n),
+    .s_axi_awid_i(cache_axi_awid), .s_axi_awaddr_i(cache_axi_awaddr),
+    .s_axi_awlen_i(cache_axi_awlen), .s_axi_awsize_i(cache_axi_awsize),
+    .s_axi_awburst_i(cache_axi_awburst), .s_axi_awcache_i(cache_axi_awcache),
+    .s_axi_awvalid_i(cache_axi_awvalid), .s_axi_awready_o(cache_axi_awready),
+    .s_axi_wdata_i(cache_axi_wdata), .s_axi_wstrb_i(cache_axi_wstrb),
+    .s_axi_wlast_i(cache_axi_wlast), .s_axi_wvalid_i(cache_axi_wvalid),
+    .s_axi_wready_o(cache_axi_wready),
+    .s_axi_bid_o(cache_axi_bid), .s_axi_bresp_o(cache_axi_bresp),
+    .s_axi_bvalid_o(cache_axi_bvalid), .s_axi_bready_i(cache_axi_bready),
+    .s_axi_arid_i(cache_axi_arid), .s_axi_araddr_i(cache_axi_araddr),
+    .s_axi_arlen_i(cache_axi_arlen), .s_axi_arsize_i(cache_axi_arsize),
+    .s_axi_arburst_i(cache_axi_arburst), .s_axi_arcache_i(cache_axi_arcache),
+    .s_axi_arvalid_i(cache_axi_arvalid), .s_axi_arready_o(cache_axi_arready),
+    .s_axi_rid_o(cache_axi_rid), .s_axi_rdata_o(cache_axi_rdata),
+    .s_axi_rresp_o(cache_axi_rresp), .s_axi_rlast_o(cache_axi_rlast),
+    .s_axi_rvalid_o(cache_axi_rvalid), .s_axi_rready_i(cache_axi_rready)
   );
 
 endmodule

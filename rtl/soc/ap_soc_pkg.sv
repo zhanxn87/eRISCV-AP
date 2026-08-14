@@ -1,0 +1,52 @@
+// SPDX-FileCopyrightText: 2025-2026 Xianning Zhan
+// SPDX-License-Identifier: BSD-3-Clause
+
+// AP architectural constants. The AP SoC top and its verification manifest
+// use this package exclusively; no 32-bit TCM address map is in the AP build.
+package ap_soc_pkg;
+
+  localparam int unsigned AP_HART_COUNT = 1;
+  localparam int unsigned AP_PADDR_W = 48;
+  localparam int unsigned AP_AXI_DATA_W = 64;
+  localparam int unsigned AP_AXI_SLV_ID_W = 4;
+  localparam int unsigned AP_AXI_USER_W = 1;
+  localparam int unsigned AP_AXI_INGRESS_PORTS = 3;
+  localparam int unsigned AP_AXI_EGRESS_PORTS = 2;
+  localparam int unsigned AP_AXI_MST_ID_W =
+      AP_AXI_SLV_ID_W + $clog2(AP_AXI_INGRESS_PORTS);
+  localparam int unsigned AP_AXI_MAX_OUTSTANDING = 8;
+
+  localparam int unsigned AP_AXI_INGRESS_ICACHE = 0;
+  localparam int unsigned AP_AXI_INGRESS_DCACHE = 1;
+  localparam int unsigned AP_AXI_INGRESS_ETH_DMA = 2;
+  localparam int unsigned AP_AXI_EGRESS_DDR = 0;
+  // axi_mem never owns MMIO. This local terminator makes an accidental
+  // non-DDR request complete with DECERR instead of entering axi_periph.
+  localparam int unsigned AP_AXI_EGRESS_ERROR = 1;
+
+  localparam logic [AP_PADDR_W-1:0] AP_BOOT_ROM_BASE = 48'h0000_0000_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_BOOT_ROM_LIMIT = 48'h0000_0001_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_CLINT_BASE = 48'h0000_0001_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_CLINT_LIMIT = 48'h0000_0002_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_PLIC_BASE = 48'h0000_0002_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_PLIC_LIMIT = 48'h0000_0003_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_APB_BASE = 48'h0000_0010_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_APB_LIMIT = 48'h0000_0110_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_BPI_BASE = 48'h0000_0100_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_BPI_LIMIT = 48'h0000_0180_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_DDR_BASE = 48'h0000_8000_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_DDR_LIMIT = 48'h0001_8000_0000;
+
+  function automatic logic ap_addr_in_range(
+    input logic [AP_PADDR_W-1:0] addr,
+    input logic [AP_PADDR_W-1:0] base,
+    input logic [AP_PADDR_W-1:0] limit
+  );
+    return (addr >= base) && (addr < limit);
+  endfunction
+
+  function automatic logic ap_is_ddr_addr(input logic [AP_PADDR_W-1:0] addr);
+    return ap_addr_in_range(addr, AP_DDR_BASE, AP_DDR_LIMIT);
+  endfunction
+
+endpackage

@@ -61,7 +61,7 @@
       while (!$feof(file)) begin
         status = $fscanf(file, "%h\n", expected_value);
         if (status == 1) begin
-          actual_value = dut.data_mem_i.sram_i.mem[base + index];
+          actual_value = dut.cache_backing_mem_i.mem[(base + index) >> 3][((base + index) & 7) * 64 +: 64];
           check(actual_value === expected_value,
                 $sformatf("signature[%0d] doubleword=%08h expected %016h, got %016h",
                           index, base + index, expected_value, actual_value));
@@ -93,7 +93,7 @@
     int index;
     begin
       for (index = 0; index < DATA_MEM_DEPTH; index = index + 1) begin
-        dut.data_mem_i.sram_i.mem[index] = fill_value;
+        dut.cache_backing_mem_i.mem[index >> 3][(index & 7) * 64 +: 64] = fill_value;
       end
     end
   endtask

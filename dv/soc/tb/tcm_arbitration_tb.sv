@@ -61,7 +61,7 @@ module tcm_arbitration_tb;
 
   data_mem #(.ADDR_WIDTH(4), .READ_LATENCY(1)) dmem_i (
     .clk, .rst_n, .req_i(dmem_req), .we_i(dmem_we), .be_i(dmem_be),
-    .addr_i(dmem_addr), .wdata_i(dmem_wdata), .resp_valid_o(dmem_resp_valid),
+    .addr_i(dmem_addr), .wdata_i(dmem_wdata), .atomic_op_i(4'd0), .resp_valid_o(dmem_resp_valid),
     .resp_write_o(dmem_resp_write),
     .rdata_o(dmem_rdata), .err_o(dmem_err)
   );

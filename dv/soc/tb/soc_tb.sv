@@ -56,12 +56,23 @@ module soc_tb #(
   logic        spi_sclk, spi_mosi, spi_miso;
   logic [3:0]  spi_ss;
   logic        jtag_tck, jtag_tms, jtag_tdi, jtag_tdo, jtag_trst_n;
+  AXI_BUS #(
+    .AXI_ADDR_WIDTH(ap_soc_pkg::AP_PADDR_W),
+    .AXI_DATA_WIDTH(ap_soc_pkg::AP_AXI_DATA_W),
+    .AXI_ID_WIDTH(ap_soc_pkg::AP_AXI_SLV_ID_W),
+    .AXI_USER_WIDTH(ap_soc_pkg::AP_AXI_USER_W)
+  ) ddr_axi ();
+  AXI_BUS #(
+    .AXI_ADDR_WIDTH(ap_soc_pkg::AP_PADDR_W),
+    .AXI_DATA_WIDTH(ap_soc_pkg::AP_AXI_DATA_W),
+    .AXI_ID_WIDTH(ap_soc_pkg::AP_AXI_SLV_ID_W),
+    .AXI_USER_WIDTH(ap_soc_pkg::AP_AXI_USER_W)
+  ) periph_axi ();
 
   // =========================================================================
   // DUT
   // =========================================================================
   soc #(
-    .ENABLE_LMEM_EARLY_LOAD_P     (ENABLE_LMEM_EARLY_LOAD_P != 0),
     .ENABLE_LOAD_RESPONSE_BYPASS_P(ENABLE_LOAD_RESPONSE_BYPASS_P != 0),
     .ENABLE_BHT_P                 (ENABLE_BHT_P != 0),
     .ENABLE_RAS_P                 (ENABLE_RAS_P != 0),
@@ -92,8 +103,65 @@ module soc_tb #(
     .jtag_tms_i                (jtag_tms),
     .jtag_tdi_i                (jtag_tdi),
     .jtag_tdo_o                (jtag_tdo),
-    .jtag_trst_n_i             (jtag_trst_n)
+    .jtag_trst_n_i             (jtag_trst_n),
+    .ddr_axi_o                 (ddr_axi),
+    .periph_axi_o              (periph_axi)
   );
+
+  // The D-Cache reaches this verification-only DDR line memory through the
+  // same central AXI fabric exposed by the AP SoC. No AP peripheral AXI
+  // slave exists yet, so terminate that egress as a non-responsive boundary.
+  axi4_line_mem #(
+    .LINE_ADDR_W_P(12)
+  ) ddr_line_mem_i (
+    .clk                 (clk),
+    .rst_n               (rst_n),
+    .s_axi_awid_i        (ddr_axi.aw_id),
+    .s_axi_awaddr_i      (ddr_axi.aw_addr),
+    .s_axi_awlen_i       (ddr_axi.aw_len),
+    .s_axi_awsize_i      (ddr_axi.aw_size),
+    .s_axi_awburst_i     (ddr_axi.aw_burst),
+    .s_axi_awcache_i     (ddr_axi.aw_cache),
+    .s_axi_awvalid_i     (ddr_axi.aw_valid),
+    .s_axi_awready_o     (ddr_axi.aw_ready),
+    .s_axi_wdata_i       (ddr_axi.w_data),
+    .s_axi_wstrb_i       (ddr_axi.w_strb),
+    .s_axi_wlast_i       (ddr_axi.w_last),
+    .s_axi_wvalid_i      (ddr_axi.w_valid),
+    .s_axi_wready_o      (ddr_axi.w_ready),
+    .s_axi_bid_o         (ddr_axi.b_id),
+    .s_axi_bresp_o       (ddr_axi.b_resp),
+    .s_axi_bvalid_o      (ddr_axi.b_valid),
+    .s_axi_bready_i      (ddr_axi.b_ready),
+    .s_axi_arid_i        (ddr_axi.ar_id),
+    .s_axi_araddr_i      (ddr_axi.ar_addr),
+    .s_axi_arlen_i       (ddr_axi.ar_len),
+    .s_axi_arsize_i      (ddr_axi.ar_size),
+    .s_axi_arburst_i     (ddr_axi.ar_burst),
+    .s_axi_arcache_i     (ddr_axi.ar_cache),
+    .s_axi_arvalid_i     (ddr_axi.ar_valid),
+    .s_axi_arready_o     (ddr_axi.ar_ready),
+    .s_axi_rid_o         (ddr_axi.r_id),
+    .s_axi_rdata_o       (ddr_axi.r_data),
+    .s_axi_rresp_o       (ddr_axi.r_resp),
+    .s_axi_rlast_o       (ddr_axi.r_last),
+    .s_axi_rvalid_o      (ddr_axi.r_valid),
+    .s_axi_rready_i      (ddr_axi.r_ready)
+  );
+
+  assign periph_axi.aw_ready = 1'b0;
+  assign periph_axi.w_ready = 1'b0;
+  assign periph_axi.b_id = '0;
+  assign periph_axi.b_resp = 2'b11;
+  assign periph_axi.b_user = '0;
+  assign periph_axi.b_valid = 1'b0;
+  assign periph_axi.ar_ready = 1'b0;
+  assign periph_axi.r_id = '0;
+  assign periph_axi.r_data = '0;
+  assign periph_axi.r_resp = 2'b11;
+  assign periph_axi.r_last = 1'b0;
+  assign periph_axi.r_user = '0;
+  assign periph_axi.r_valid = 1'b0;
 
   // =========================================================================
   // Oracle / stimulus variables
