@@ -31,8 +31,10 @@ module if_stage #(
   input  logic        imem_ready_i,
   input  logic        imem_rvalid_i,
   input  logic [31:0] imem_rdata_i,
+  input  logic        imem_page_fault_i,
+  input  logic        imem_access_fault_i,
   output logic        imem_req_o,
-  output paddr_t      imem_addr_o,
+  output xlen_t       imem_addr_o,
 
   // IF/ID boundary
   input  logic        if_id_en_i,
@@ -137,7 +139,7 @@ module if_stage #(
   // I-bus interface
   // ---------------------------------------------------------------------------
   assign imem_req_o  = can_issue & (redirect_request | pc_en_i);
-  assign imem_addr_o = aligned_fetch_pc[PADDR_W-1:0];
+  assign imem_addr_o = aligned_fetch_pc;
   assign fetch_wait_o = (req_pending_q & !imem_rvalid_i) |
                         (fetch_enable_i & !hold_valid_q & !req_pending_q & !imem_ready_i);
 
@@ -206,8 +208,22 @@ module if_stage #(
         upper_valid_q <= 1'b0;
         if_id_o       <= '0;
       end else begin
+        // A fault response is an instruction packet, not a synthetic NOP.
+        // It must precede any buffered halfword from the failed fetch stream.
+        if (response_valid && (imem_page_fault_i || imem_access_fault_i) &&
+            !drop_resp_q && if_id_en_i) begin
+          if_id_o.valid                    <= 1'b1;
+          if_id_o.pc                       <= resp_pc_q;
+          if_id_o.instr                    <= 32'h0000_0013;
+          if_id_o.compressed               <= 1'b0;
+          if_id_o.instruction_page_fault   <= imem_page_fault_i;
+          if_id_o.instruction_access_fault <= imem_access_fault_i;
+          hold_valid_q                     <= 1'b0;
+          upper_valid_q                    <= 1'b0;
         // Priority: hold buffer > upper-halfword buffer > IMEM response
-        if (hold_valid_q && if_id_en_i) begin
+        end else if (hold_valid_q && if_id_en_i) begin
+          if_id_o.instruction_page_fault   <= 1'b0;
+          if_id_o.instruction_access_fault <= 1'b0;
           if_id_o.valid      <= 1'b1;
           if_id_o.pc         <= hold_pc_q;
           if_id_o.instr      <= hold_instr_q;
@@ -219,7 +235,9 @@ module if_stage #(
           if_id_o.valid      <= 1'b1;
           if_id_o.pc         <= upper_pc_q;
           if_id_o.instr      <= {imem_rdata_i[15:0], upper_data_q};
-          if_id_o.compressed <= 1'b0;
+          if_id_o.compressed               <= 1'b0;
+          if_id_o.instruction_page_fault   <= 1'b0;
+          if_id_o.instruction_access_fault <= 1'b0;
           // The response upper halfword starts the next sequential instruction.
           // Preserve it while request lifecycle concurrently advances to the
           // following word; otherwise an RVC/uncompressed stream re-reads words.
@@ -232,7 +250,9 @@ module if_stage #(
             if_id_o.valid      <= 1'b1;
             if_id_o.pc         <= upper_pc_q;
             if_id_o.instr      <= {16'b0, upper_data_q};
-            if_id_o.compressed <= 1'b1;
+            if_id_o.compressed               <= 1'b1;
+            if_id_o.instruction_page_fault   <= 1'b0;
+            if_id_o.instruction_access_fault <= 1'b0;
             upper_valid_q      <= 1'b0;
           end else begin
             // Wait for the following word so the upper-halfword instruction
@@ -246,7 +266,9 @@ module if_stage #(
               if_id_o.valid      <= 1'b1;
               if_id_o.pc         <= resp_pc_q;
               if_id_o.instr      <= {16'b0, imem_rdata_i[31:16]};
-              if_id_o.compressed <= 1'b1;
+              if_id_o.compressed               <= 1'b1;
+              if_id_o.instruction_page_fault   <= 1'b0;
+              if_id_o.instruction_access_fault <= 1'b0;
               upper_valid_q      <= 1'b0;
             end else begin
               upper_valid_q <= 1'b1;
@@ -259,7 +281,9 @@ module if_stage #(
             if_id_o.valid      <= 1'b1;
             if_id_o.pc         <= resp_pc_q;
             if_id_o.instr      <= {16'b0, imem_rdata_i[15:0]};
-            if_id_o.compressed <= 1'b1;
+            if_id_o.compressed               <= 1'b1;
+            if_id_o.instruction_page_fault   <= 1'b0;
+            if_id_o.instruction_access_fault <= 1'b0;
             upper_valid_q      <= 1'b1;
             upper_data_q       <= imem_rdata_i[31:16];
             upper_pc_q         <= resp_pc_q + xlen_t'(2);
@@ -268,7 +292,9 @@ module if_stage #(
             if_id_o.valid      <= 1'b1;
             if_id_o.pc         <= resp_pc_q;
             if_id_o.instr      <= imem_rdata_i;
-            if_id_o.compressed <= 1'b0;
+            if_id_o.compressed               <= 1'b0;
+            if_id_o.instruction_page_fault   <= 1'b0;
+            if_id_o.instruction_access_fault <= 1'b0;
             upper_valid_q      <= 1'b0;
           end
         end else if (upper_valid_q && !is_c_instr(upper_data_q) &&

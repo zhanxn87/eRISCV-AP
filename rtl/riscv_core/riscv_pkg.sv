@@ -46,6 +46,7 @@ package riscv_pkg;
   localparam bit HAS_WFI         = 1'b1;
   localparam bit HAS_DEBUG       = 1'b1;
   localparam bit HAS_UMODE      = 1'b1;
+  localparam bit HAS_SMODE      = 1'b1;
   localparam bit HAS_MPRV       = 1'b1;
   localparam bit HAS_MCOUNTEREN = 1'b1;
 
@@ -190,17 +191,20 @@ package riscv_pkg;
     ALU_SRAW  = 6'd14
   } alu_op_e;
 
-  typedef enum logic [2:0] {
-    SYS_NONE   = 3'd0,
-    SYS_ECALL  = 3'd1,
-    SYS_MRET   = 3'd2,
-    SYS_EBREAK = 3'd3,
-    SYS_DRET   = 3'd4,
-    SYS_WFI    = 3'd5
+  typedef enum logic [3:0] {
+    SYS_NONE   = 4'd0,
+    SYS_ECALL  = 4'd1,
+    SYS_MRET   = 4'd2,
+    SYS_EBREAK = 4'd3,
+    SYS_DRET   = 4'd4,
+    SYS_WFI    = 4'd5,
+    SYS_SRET   = 4'd6,
+    SYS_SFENCE_VMA = 4'd7
   } sys_op_e;
 
   typedef enum logic [1:0] {
     PRIV_U = 2'b00,
+    PRIV_S = 2'b01,
     PRIV_M = 2'b11
   } privilege_mode_e;
 
@@ -213,14 +217,16 @@ package riscv_pkg;
 
   // Serialized low-frequency control events. A non-NONE source owns exactly
   // one EX/MEM-to-WB control packet.
-  typedef enum logic [2:0] {
-    CONTROL_NONE        = 3'd0,
-    CONTROL_EXCEPTION   = 3'd1,
-    CONTROL_MRET        = 3'd2,
-    CONTROL_DEBUG_ENTER = 3'd3,
-    CONTROL_DEBUG_STEP  = 3'd4,
-    CONTROL_DRET        = 3'd5,
-    CONTROL_WFI         = 3'd6
+  typedef enum logic [3:0] {
+    CONTROL_NONE        = 4'd0,
+    CONTROL_EXCEPTION   = 4'd1,
+    CONTROL_MRET        = 4'd2,
+    CONTROL_DEBUG_ENTER = 4'd3,
+    CONTROL_DEBUG_STEP  = 4'd4,
+    CONTROL_DRET        = 4'd5,
+    CONTROL_WFI         = 4'd6,
+    CONTROL_SRET        = 4'd7,
+    CONTROL_SFENCE_VMA  = 4'd8
   } control_source_e;
 
   // Pipeline register structs — double as the inter-stage contract.
@@ -229,6 +235,10 @@ package riscv_pkg;
     xlen_t       pc;
     logic [31:0] instr;
     logic        compressed;  // 1 if this is a 16-bit compressed instruction
+    // Fetch responses carry translation failures as architectural packets so
+    // older instructions retire before the fault enters EX.
+    logic        instruction_page_fault;
+    logic        instruction_access_fault;
   } if_id_t;
 
   typedef struct packed {
@@ -236,6 +246,8 @@ package riscv_pkg;
     xlen_t       pc;
     logic [31:0] instr;
     logic        compressed;
+    logic        instruction_page_fault;
+    logic        instruction_access_fault;
     xlen_t       rs1_data;
     xlen_t       rs2_data;
     xlen_t       imm;
@@ -309,15 +321,14 @@ package riscv_pkg;
     xlen_t       control_trap_value;
     xlen_t       control_debug_dpc;
     logic [2:0]  control_debug_cause;
+    xlen_t       control_sfence_vma_vaddr;
+    logic [15:0] control_sfence_vma_asid;
     logic        compressed;
     xlen_t       ex_result;
     xlen_t       data_addr;
     xlen_t       store_data;
     logic [4:0]  store_rs2_addr;
     logic        load_store_data_bypass;
-    // The SoC accepted this load at the local-memory port during EX. Its synchronous
-    // response is consumed in MEM on the following cycle.
-    logic        lmem_load;
     logic        fence;
     logic [4:0]  rd_addr;
     logic        mem_load;
@@ -348,6 +359,8 @@ package riscv_pkg;
     xlen_t       control_trap_value;
     xlen_t       control_debug_dpc;
     logic [2:0]  control_debug_cause;
+    xlen_t       control_sfence_vma_vaddr;
+    logic [15:0] control_sfence_vma_asid;
     xlen_t       wb_data;
     logic [4:0]  rd_addr;
     logic        rd_we;
@@ -382,6 +395,21 @@ package riscv_pkg;
   localparam logic [11:0] CSR_MARCHID      = 12'hf12;
   localparam logic [11:0] CSR_MIMPID       = 12'hf13;
   localparam logic [11:0] CSR_MHARTID      = 12'hf14;
+
+  // Supervisor Trap Setup
+  localparam logic [11:0] CSR_SSTATUS      = 12'h100;
+  localparam logic [11:0] CSR_SIE          = 12'h104;
+  localparam logic [11:0] CSR_STVEC        = 12'h105;
+  localparam logic [11:0] CSR_SCOUNTEREN   = 12'h106;
+
+  // Supervisor Trap Handling
+  localparam logic [11:0] CSR_SSCRATCH     = 12'h140;
+  localparam logic [11:0] CSR_SEPC         = 12'h141;
+  localparam logic [11:0] CSR_SCAUSE       = 12'h142;
+  localparam logic [11:0] CSR_STVAL        = 12'h143;
+  localparam logic [11:0] CSR_SIP          = 12'h144;
+  // Sv39 address-translation and protection root.
+  localparam logic [11:0] CSR_SATP         = 12'h180;
 
   // Machine Trap Setup
   localparam logic [11:0] CSR_MSTATUS      = 12'h300;

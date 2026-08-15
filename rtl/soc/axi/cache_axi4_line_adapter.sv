@@ -27,41 +27,7 @@ module cache_axi4_line_adapter #(
   output logic [LINE_BYTES_P*8-1:0]    line_rdata_o,
   output logic                         line_err_o,
 
-  output logic [AXI_ID_W_P-1:0]        m_axi_awid_o,
-  output logic [PADDR_W_P-1:0]         m_axi_awaddr_o,
-  output logic [7:0]                   m_axi_awlen_o,
-  output logic [2:0]                   m_axi_awsize_o,
-  output logic [1:0]                   m_axi_awburst_o,
-  output logic [3:0]                   m_axi_awcache_o,
-  output logic                         m_axi_awvalid_o,
-  input  logic                         m_axi_awready_i,
-
-  output logic [AXI_DATA_W_P-1:0]      m_axi_wdata_o,
-  output logic [AXI_DATA_W_P/8-1:0]    m_axi_wstrb_o,
-  output logic                         m_axi_wlast_o,
-  output logic                         m_axi_wvalid_o,
-  input  logic                         m_axi_wready_i,
-
-  input  logic [AXI_ID_W_P-1:0]        m_axi_bid_i,
-  input  logic [1:0]                   m_axi_bresp_i,
-  input  logic                         m_axi_bvalid_i,
-  output logic                         m_axi_bready_o,
-
-  output logic [AXI_ID_W_P-1:0]        m_axi_arid_o,
-  output logic [PADDR_W_P-1:0]         m_axi_araddr_o,
-  output logic [7:0]                   m_axi_arlen_o,
-  output logic [2:0]                   m_axi_arsize_o,
-  output logic [1:0]                   m_axi_arburst_o,
-  output logic [3:0]                   m_axi_arcache_o,
-  output logic                         m_axi_arvalid_o,
-  input  logic                         m_axi_arready_i,
-
-  input  logic [AXI_ID_W_P-1:0]        m_axi_rid_i,
-  input  logic [AXI_DATA_W_P-1:0]      m_axi_rdata_i,
-  input  logic [1:0]                   m_axi_rresp_i,
-  input  logic                         m_axi_rlast_i,
-  input  logic                         m_axi_rvalid_i,
-  output logic                         m_axi_rready_o
+  AXI_BUS.Master m_axi_o
 );
 
   localparam int unsigned LINE_BITS_P = LINE_BYTES_P * 8;
@@ -97,39 +63,51 @@ module cache_axi4_line_adapter #(
   end
 
   always_comb begin
-    m_axi_awid_o = AXI_ID_P;
-    m_axi_awaddr_o = {line_addr_q[PADDR_W_P-1:LINE_OFFSET_W], {LINE_OFFSET_W{1'b0}}};
-    m_axi_awlen_o = 8'(BEATS_P - 1);
-    m_axi_awsize_o = 3'(AXI_SIZE_P);
-    m_axi_awburst_o = AXI_BURST_INCR;
-    m_axi_awcache_o = 4'b1111;
-    m_axi_awvalid_o = 1'b0;
+    m_axi_o.aw_id = AXI_ID_P;
+    m_axi_o.aw_addr = {line_addr_q[PADDR_W_P-1:LINE_OFFSET_W], {LINE_OFFSET_W{1'b0}}};
+    m_axi_o.aw_len = 8'(BEATS_P - 1);
+    m_axi_o.aw_size = 3'(AXI_SIZE_P);
+    m_axi_o.aw_burst = AXI_BURST_INCR;
+    m_axi_o.aw_lock = 1'b0;
+    m_axi_o.aw_cache = 4'b1111;
+    m_axi_o.aw_prot = '0;
+    m_axi_o.aw_qos = '0;
+    m_axi_o.aw_region = '0;
+    m_axi_o.aw_atop = '0;
+    m_axi_o.aw_user = '0;
+    m_axi_o.aw_valid = 1'b0;
 
-    m_axi_wdata_o = line_wdata_q[beat_q * AXI_DATA_W_P +: AXI_DATA_W_P];
-    m_axi_wstrb_o = {AXI_DATA_W_P / 8{1'b1}};
-    m_axi_wlast_o = beat_q == BEAT_W'(BEATS_P - 1);
-    m_axi_wvalid_o = 1'b0;
-    m_axi_bready_o = 1'b0;
+    m_axi_o.w_data = line_wdata_q[beat_q * AXI_DATA_W_P +: AXI_DATA_W_P];
+    m_axi_o.w_strb = {AXI_DATA_W_P / 8{1'b1}};
+    m_axi_o.w_last = beat_q == BEAT_W'(BEATS_P - 1);
+    m_axi_o.w_user = '0;
+    m_axi_o.w_valid = 1'b0;
+    m_axi_o.b_ready = 1'b0;
 
-    m_axi_arid_o = AXI_ID_P;
-    m_axi_araddr_o = {line_addr_q[PADDR_W_P-1:LINE_OFFSET_W], {LINE_OFFSET_W{1'b0}}};
-    m_axi_arlen_o = 8'(BEATS_P - 1);
-    m_axi_arsize_o = 3'(AXI_SIZE_P);
-    m_axi_arburst_o = AXI_BURST_INCR;
-    m_axi_arcache_o = 4'b1111;
-    m_axi_arvalid_o = 1'b0;
-    m_axi_rready_o = 1'b0;
+    m_axi_o.ar_id = AXI_ID_P;
+    m_axi_o.ar_addr = {line_addr_q[PADDR_W_P-1:LINE_OFFSET_W], {LINE_OFFSET_W{1'b0}}};
+    m_axi_o.ar_len = 8'(BEATS_P - 1);
+    m_axi_o.ar_size = 3'(AXI_SIZE_P);
+    m_axi_o.ar_burst = AXI_BURST_INCR;
+    m_axi_o.ar_lock = 1'b0;
+    m_axi_o.ar_cache = 4'b1111;
+    m_axi_o.ar_prot = '0;
+    m_axi_o.ar_qos = '0;
+    m_axi_o.ar_region = '0;
+    m_axi_o.ar_user = '0;
+    m_axi_o.ar_valid = 1'b0;
+    m_axi_o.r_ready = 1'b0;
 
     line_resp_valid_o = state_q == AXI_RESP;
     line_rdata_o = line_rdata_q;
     line_err_o = line_err_q;
 
     unique case (state_q)
-      AXI_READ_ADDR:  m_axi_arvalid_o = 1'b1;
-      AXI_READ_DATA:  m_axi_rready_o = 1'b1;
-      AXI_WRITE_ADDR: m_axi_awvalid_o = 1'b1;
-      AXI_WRITE_DATA: m_axi_wvalid_o = 1'b1;
-      AXI_WRITE_RESP: m_axi_bready_o = 1'b1;
+      AXI_READ_ADDR:  m_axi_o.ar_valid = 1'b1;
+      AXI_READ_DATA:  m_axi_o.r_ready = 1'b1;
+      AXI_WRITE_ADDR: m_axi_o.aw_valid = 1'b1;
+      AXI_WRITE_DATA: m_axi_o.w_valid = 1'b1;
+      AXI_WRITE_RESP: m_axi_o.b_ready = 1'b1;
       default: ;
     endcase
   end
@@ -156,36 +134,36 @@ module cache_axi4_line_adapter #(
         end
 
         AXI_READ_ADDR: begin
-          if (m_axi_arready_i)
+          if (m_axi_o.ar_ready)
             state_q <= AXI_READ_DATA;
         end
 
         AXI_READ_DATA: begin
-          if (m_axi_rvalid_i) begin
-            line_rdata_q[beat_q * AXI_DATA_W_P +: AXI_DATA_W_P] <= m_axi_rdata_i;
-            if (m_axi_rlast_i || (beat_q == BEAT_W'(BEATS_P - 1))) begin
+          if (m_axi_o.r_valid) begin
+            line_rdata_q[beat_q * AXI_DATA_W_P +: AXI_DATA_W_P] <= m_axi_o.r_data;
+            if (m_axi_o.r_last || (beat_q == BEAT_W'(BEATS_P - 1))) begin
               line_err_q <= line_err_q ||
-                            (m_axi_rid_i != AXI_ID_P) ||
-                            (m_axi_rresp_i != AXI_RESP_OKAY) ||
-                            !m_axi_rlast_i ||
+                            (m_axi_o.r_id != AXI_ID_P) ||
+                            (m_axi_o.r_resp != AXI_RESP_OKAY) ||
+                            !m_axi_o.r_last ||
                             (beat_q != BEAT_W'(BEATS_P - 1));
               state_q <= AXI_RESP;
             end else begin
               line_err_q <= line_err_q ||
-                            (m_axi_rid_i != AXI_ID_P) ||
-                            (m_axi_rresp_i != AXI_RESP_OKAY);
+                            (m_axi_o.r_id != AXI_ID_P) ||
+                            (m_axi_o.r_resp != AXI_RESP_OKAY);
               beat_q <= beat_q + 1'b1;
             end
           end
         end
 
         AXI_WRITE_ADDR: begin
-          if (m_axi_awready_i)
+          if (m_axi_o.aw_ready)
             state_q <= AXI_WRITE_DATA;
         end
 
         AXI_WRITE_DATA: begin
-          if (m_axi_wready_i) begin
+          if (m_axi_o.w_ready) begin
             if (beat_q == BEAT_W'(BEATS_P - 1))
               state_q <= AXI_WRITE_RESP;
             else
@@ -194,9 +172,9 @@ module cache_axi4_line_adapter #(
         end
 
         AXI_WRITE_RESP: begin
-          if (m_axi_bvalid_i) begin
-            line_err_q <= (m_axi_bid_i != AXI_ID_P) ||
-                          (m_axi_bresp_i != AXI_RESP_OKAY);
+          if (m_axi_o.b_valid) begin
+            line_err_q <= (m_axi_o.b_id != AXI_ID_P) ||
+                          (m_axi_o.b_resp != AXI_RESP_OKAY);
             state_q <= AXI_RESP;
           end
         end

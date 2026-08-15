@@ -22,16 +22,20 @@ module riscv_wrapper #(
   output logic        debug_running_o,
   output xlen_t       debug_pc_o,
   output logic [2:0]  debug_cause_o,
+  output logic        sfence_vma_o,
+  output xlen_t       sfence_vma_vaddr_o,
+  output logic [15:0] sfence_vma_asid_o,
   input  logic [31:0] irq_i
 );
 
   logic        imem_req;
   logic        imem_ready;
-  paddr_t      imem_addr;
+  xlen_t       imem_addr;
   logic        imem_rvalid;
   logic [31:0] imem_rdata;
   logic        data_req;
-  paddr_t      data_addr;
+  xlen_t       data_addr;
+  paddr_t      data_paddr;
   logic [63:0] data_wdata;
   logic        data_we;
   logic [7:0]  data_be;
@@ -48,21 +52,12 @@ module riscv_wrapper #(
   logic        cache_line_req, cache_line_we, cache_line_resp_valid, cache_line_err;
   paddr_t      cache_line_addr;
   logic [511:0] cache_line_wdata, cache_line_rdata;
-  logic [3:0]  cache_axi_awid, cache_axi_bid, cache_axi_arid, cache_axi_rid;
-  paddr_t      cache_axi_awaddr, cache_axi_araddr;
-  logic [7:0]  cache_axi_awlen, cache_axi_arlen;
-  logic [2:0]  cache_axi_awsize, cache_axi_arsize;
-  logic [1:0]  cache_axi_awburst, cache_axi_arburst;
-  logic [3:0]  cache_axi_awcache, cache_axi_arcache;
-  logic        cache_axi_awvalid, cache_axi_awready;
-  logic        cache_axi_arvalid, cache_axi_arready;
-  logic [63:0] cache_axi_wdata, cache_axi_rdata;
-  logic [7:0]  cache_axi_wstrb;
-  logic        cache_axi_wlast, cache_axi_wvalid, cache_axi_wready;
-  logic [1:0]  cache_axi_bresp;
-  logic        cache_axi_bvalid, cache_axi_bready;
-  logic [1:0]  cache_axi_rresp;
-  logic        cache_axi_rlast, cache_axi_rvalid, cache_axi_rready;
+  AXI_BUS #(
+    .AXI_ADDR_WIDTH(PADDR_W),
+    .AXI_DATA_WIDTH(64),
+    .AXI_ID_WIDTH(4),
+    .AXI_USER_WIDTH(1)
+  ) cache_axi ();
   logic        mmio_hit;
   logic        mmio_resp_valid;
   logic [63:0] mmio_rdata;
@@ -72,6 +67,7 @@ module riscv_wrapper #(
   logic [31:0] combined_irq;
 
   assign combined_irq = irq_i | mmio_irq;
+  assign data_paddr = data_addr[PADDR_W-1:0];
   // The core-facing cache path is active for ordinary memory. MMIO bypasses
   // it, and atomics to MMIO fail instead of issuing an RMW sequence.
   assign data_resp_valid = mmio_hit ? mmio_resp_valid : cache_data_resp_valid;
@@ -100,7 +96,10 @@ module riscv_wrapper #(
     .imem_addr_o      (imem_addr),
     .imem_rvalid_i    (imem_rvalid),
     .imem_rdata_i     (imem_rdata),
+    .imem_page_fault_i(1'b0),
+    .imem_access_fault_i(1'b0),
     .data_req_o       (data_req),
+    .data_req_ready_i (1'b1),
     .data_addr_o      (data_addr),
     .data_wdata_o     (data_wdata),
     .data_we_o        (data_we),
@@ -111,21 +110,23 @@ module riscv_wrapper #(
     .data_resp_valid_i(data_resp_valid),
     .data_rdata_i     (data_rdata),
     .data_err_i       (data_err),
+    .data_page_fault_i(1'b0),
     .data_fence_o     (data_fence),
     .data_fence_done_i(cache_flush_done),
     .data_fence_err_i (cache_flush_err),
-    // The standalone wrapper intentionally exercises the normal D-bus path.
-    // Product SoC integration owns the optional DTCM early-load port.
-    .lmem_req_o       (),
-    .lmem_addr_o      (),
-    .lmem_accept_i    (1'b0),
-    .lmem_resp_valid_i(1'b0),
-    .lmem_rdata_i     ('0),
-    .lmem_err_i       (1'b0),
     .mtime_i          (mmio_mtime),
     .irq_i            (combined_irq),
     .wfi_wake_i       (1'b0),
-    .wfi_sleep_o      ()
+    .wfi_sleep_o      (),
+    .satp_o           (),
+    .privilege_mode_o (),
+    .mstatus_sum_o    (),
+    .mstatus_mxr_o    (),
+    .mstatus_mprv_o   (),
+    .mstatus_mpp_o    (),
+    .sfence_vma_o     (sfence_vma_o),
+    .sfence_vma_vaddr_o(sfence_vma_vaddr_o),
+    .sfence_vma_asid_o(sfence_vma_asid_o)
   );
 
   instr_mem #(
@@ -164,7 +165,7 @@ module riscv_wrapper #(
     .req_i       (data_req),
     .we_i        (data_we),
     .be_i        (data_be),
-    .addr_i      (data_addr),
+    .addr_i      (data_paddr),
     .wdata_i     (data_wdata),
     .hit_o       (mmio_hit),
     .resp_valid_o(mmio_resp_valid),
@@ -178,7 +179,7 @@ module riscv_wrapper #(
     .clk      (clk),
     .rst_n    (rst_n),
     .cpu_req_i(data_req && !mmio_hit),
-    .cpu_addr_i(data_addr),
+    .cpu_addr_i(data_paddr),
     .cpu_we_i     (data_we),
     .cpu_be_i     (data_be),
     .cpu_wdata_i  (data_wdata),
@@ -199,27 +200,16 @@ module riscv_wrapper #(
   );
 
   cache_axi4_line_adapter data_cache_axi4_i (
-    .clk(clk), .rst_n(rst_n),
-    .line_req_i(cache_line_req), .line_we_i(cache_line_we),
-    .line_addr_i(cache_line_addr), .line_wdata_i(cache_line_wdata),
-    .line_resp_valid_o(cache_line_resp_valid), .line_rdata_o(cache_line_rdata),
+    .clk(clk),
+    .rst_n(rst_n),
+    .line_req_i(cache_line_req),
+    .line_we_i(cache_line_we),
+    .line_addr_i(cache_line_addr),
+    .line_wdata_i(cache_line_wdata),
+    .line_resp_valid_o(cache_line_resp_valid),
+    .line_rdata_o(cache_line_rdata),
     .line_err_o(cache_line_err),
-    .m_axi_awid_o(cache_axi_awid), .m_axi_awaddr_o(cache_axi_awaddr),
-    .m_axi_awlen_o(cache_axi_awlen), .m_axi_awsize_o(cache_axi_awsize),
-    .m_axi_awburst_o(cache_axi_awburst), .m_axi_awcache_o(cache_axi_awcache),
-    .m_axi_awvalid_o(cache_axi_awvalid), .m_axi_awready_i(cache_axi_awready),
-    .m_axi_wdata_o(cache_axi_wdata), .m_axi_wstrb_o(cache_axi_wstrb),
-    .m_axi_wlast_o(cache_axi_wlast), .m_axi_wvalid_o(cache_axi_wvalid),
-    .m_axi_wready_i(cache_axi_wready),
-    .m_axi_bid_i(cache_axi_bid), .m_axi_bresp_i(cache_axi_bresp),
-    .m_axi_bvalid_i(cache_axi_bvalid), .m_axi_bready_o(cache_axi_bready),
-    .m_axi_arid_o(cache_axi_arid), .m_axi_araddr_o(cache_axi_araddr),
-    .m_axi_arlen_o(cache_axi_arlen), .m_axi_arsize_o(cache_axi_arsize),
-    .m_axi_arburst_o(cache_axi_arburst), .m_axi_arcache_o(cache_axi_arcache),
-    .m_axi_arvalid_o(cache_axi_arvalid), .m_axi_arready_i(cache_axi_arready),
-    .m_axi_rid_i(cache_axi_rid), .m_axi_rdata_i(cache_axi_rdata),
-    .m_axi_rresp_i(cache_axi_rresp), .m_axi_rlast_i(cache_axi_rlast),
-    .m_axi_rvalid_i(cache_axi_rvalid), .m_axi_rready_o(cache_axi_rready)
+    .m_axi_o(cache_axi)
   );
 
   axi4_line_mem #(
@@ -229,23 +219,9 @@ module riscv_wrapper #(
     .LINE_BYTES_P(64),
     .LINE_ADDR_W_P(DMEM_WORD_ADDR_WIDTH - 3)
   ) cache_backing_mem_i (
-    .clk(clk), .rst_n(rst_n),
-    .s_axi_awid_i(cache_axi_awid), .s_axi_awaddr_i(cache_axi_awaddr),
-    .s_axi_awlen_i(cache_axi_awlen), .s_axi_awsize_i(cache_axi_awsize),
-    .s_axi_awburst_i(cache_axi_awburst), .s_axi_awcache_i(cache_axi_awcache),
-    .s_axi_awvalid_i(cache_axi_awvalid), .s_axi_awready_o(cache_axi_awready),
-    .s_axi_wdata_i(cache_axi_wdata), .s_axi_wstrb_i(cache_axi_wstrb),
-    .s_axi_wlast_i(cache_axi_wlast), .s_axi_wvalid_i(cache_axi_wvalid),
-    .s_axi_wready_o(cache_axi_wready),
-    .s_axi_bid_o(cache_axi_bid), .s_axi_bresp_o(cache_axi_bresp),
-    .s_axi_bvalid_o(cache_axi_bvalid), .s_axi_bready_i(cache_axi_bready),
-    .s_axi_arid_i(cache_axi_arid), .s_axi_araddr_i(cache_axi_araddr),
-    .s_axi_arlen_i(cache_axi_arlen), .s_axi_arsize_i(cache_axi_arsize),
-    .s_axi_arburst_i(cache_axi_arburst), .s_axi_arcache_i(cache_axi_arcache),
-    .s_axi_arvalid_i(cache_axi_arvalid), .s_axi_arready_o(cache_axi_arready),
-    .s_axi_rid_o(cache_axi_rid), .s_axi_rdata_o(cache_axi_rdata),
-    .s_axi_rresp_o(cache_axi_rresp), .s_axi_rlast_o(cache_axi_rlast),
-    .s_axi_rvalid_o(cache_axi_rvalid), .s_axi_rready_i(cache_axi_rready)
+    .clk(clk),
+    .rst_n(rst_n),
+    .s_axi_i(cache_axi)
   );
 
 endmodule

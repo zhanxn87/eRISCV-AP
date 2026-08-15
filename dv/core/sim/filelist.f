@@ -7,10 +7,14 @@
 ../../../rtl/soc/mem/sram_1rw.sv
 ../../../rtl/soc/mem/instr_mem.sv
 ../../../rtl/soc/mem/data_mem.sv
++incdir+../../../rtl/vendor/axi/include
+../../../rtl/vendor/axi/src/axi_pkg.sv
+../../../rtl/vendor/axi/src/axi_intf.sv
 ../../../rtl/soc/axi/cache_axi4_line_adapter.sv
 ../../../rtl/soc/cache/dcache.sv
 ../tb/axi4_line_mem.sv
 ../tb/clint_plic_mmio.sv
 ../tb/riscv_wrapper.sv
 ../tb/riscv_tb.sv
+../tb/sfence_vma_metadata_tb.sv
 ../tb/fpu_adapter_tb.sv

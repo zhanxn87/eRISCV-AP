@@ -6,15 +6,12 @@ import riscv_pkg::*;
 // Phase 12 five-stage RV64 integer core top.
 // It connects the pipeline stages, hazard control, debug flow, and memory-side handshakes.
 //
-// The core fetches 32-bit instruction words and exposes 48-bit physical
-// addresses with a 64-bit data path. Memory size and address decoding belong
-// to the surrounding SoC or verification wrapper.
+// The core fetches 32-bit instruction words and exposes XLEN virtual
+// addresses with a 64-bit data path. Sv39 translation, physical address
+// width, and address decoding belong to the surrounding hart tile.
 module riscv_core #(
   parameter xlen_t RESET_VECTOR_ADDR_P = xlen_t'(RESET_VECTOR_ADDR),
   parameter xlen_t DEBUG_BASE_ADDR_P   = xlen_t'(DEBUG_BASE_ADDR),
-  // Enable EX-stage local-memory load launch. When disabled, all data loads
-  // use the normal MEM-stage D-bus path and the optional local port is idle.
-  parameter bit          ENABLE_LMEM_EARLY_LOAD_P = 1'b1,
   // Enable completed-load forwarding to branch comparison and store data.
   // When disabled, dependent consumers wait for MEM/WB writeback.
   parameter bit          ENABLE_LOAD_RESPONSE_BYPASS_P = 1'b1,
@@ -54,13 +51,16 @@ module riscv_core #(
   // Instruction-memory interface
   output logic        imem_req_o,
   input  logic        imem_ready_i,
-  output paddr_t      imem_addr_o,
+  output xlen_t       imem_addr_o,
   input  logic        imem_rvalid_i,
   input  logic [31:0] imem_rdata_i,
+  input  logic        imem_page_fault_i,
+  input  logic        imem_access_fault_i,
 
   // Data-memory interface
   output logic        data_req_o,
-  output paddr_t      data_addr_o,
+  input  logic        data_req_ready_i,
+  output xlen_t       data_addr_o,
   output logic [63:0] data_wdata_o,
   output logic        data_we_o,
   output logic [7:0]  data_be_o,
@@ -70,27 +70,30 @@ module riscv_core #(
   input  logic        data_resp_valid_i,
   input  logic [63:0] data_rdata_i,
   input  logic        data_err_i,
+  input  logic        data_page_fault_i,
   // FENCE cache-drain handshake. A cacheless integration may complete this
   // immediately once its blocking D-bus has completed all older accesses.
   output logic        data_fence_o,
   input  logic        data_fence_done_i,
   input  logic        data_fence_err_i,
 
-  // Optional local-memory read request (core -> SoC).
-  // The core does not decode the address map; an unaccepted request falls
-  // back to the normal D-bus path.
-  output logic        lmem_req_o,
-  output paddr_t      lmem_addr_o,
-  input  logic        lmem_accept_i,
-  input  logic        lmem_resp_valid_i,
-  input  logic [63:0] lmem_rdata_i,
-  input  logic        lmem_err_i,
-
   // Time, interrupt, and WFI wake inputs
   input  logic [63:0] mtime_i,
   input  logic [31:0] irq_i,
   input  logic        wfi_wake_i,
-  output logic        wfi_sleep_o
+  output logic        wfi_sleep_o,
+
+  // Hart-local MMU context. The AP hart tile consumes these when it places
+  // Sv39 translation between this core and the cache hierarchy.
+  output xlen_t       satp_o,
+  output privilege_mode_e privilege_mode_o,
+  output logic        mstatus_sum_o,
+  output logic        mstatus_mxr_o,
+  output logic        mstatus_mprv_o,
+  output privilege_mode_e mstatus_mpp_o,
+  output logic        sfence_vma_o,
+  output xlen_t       sfence_vma_vaddr_o,
+  output logic [15:0] sfence_vma_asid_o
 );
 
   // ---------------------------------------------------------------------------
@@ -105,7 +108,7 @@ module riscv_core #(
   // IF-stage observations and decode dependency metadata
   // IF owns I-bus waiting; the source metadata is decoded alongside IF/ID.
   // ---------------------------------------------------------------------------
-  paddr_t      if_imem_addr;
+  xlen_t       if_imem_addr;
   xlen_t       if_halt_pc;
   logic        if_fetch_wait;
   logic        if_id_uses_rs1;
@@ -122,45 +125,21 @@ module riscv_core #(
   // MEM/WB observations, writeback data flow, and M1 D-bus adaptation
   // M1 separates I/D requests and can hold MEM/WB on a response wait.
   logic        mem_wait;
-  logic        mem_lmem_response;
-
-  // Optional EX-stage local-memory path. Keep the external port stable for
-  // all configurations; the parameter disables request, acceptance, and
-  // completion together so a disabled path cannot consume a local response.
-  logic        lmem_req_internal;
-  paddr_t      lmem_addr_internal;
-  logic        lmem_accept;
-  logic        lmem_resp_valid;
-  logic [63:0] lmem_rdata;
-  logic        lmem_err;
-
-  generate
-    if (ENABLE_LMEM_EARLY_LOAD_P) begin : g_lmem_early_load
-      assign lmem_req_o      = lmem_req_internal;
-      assign lmem_addr_o     = lmem_addr_internal;
-      assign lmem_accept     = lmem_accept_i;
-      assign lmem_resp_valid = lmem_resp_valid_i;
-      assign lmem_rdata      = lmem_rdata_i;
-      assign lmem_err        = lmem_err_i;
-    end else begin : g_no_lmem_early_load
-      assign lmem_req_o      = 1'b0;
-      assign lmem_addr_o     = '0;
-      assign lmem_accept     = 1'b0;
-      assign lmem_resp_valid = 1'b0;
-      assign lmem_rdata      = '0;
-      assign lmem_err        = 1'b0;
-    end
-  endgenerate
-
+  logic        mem_fault_valid;
+  xlen_t       mem_fault_cause;
   // EX/WB serialized-control lifecycle and architectural commit data
   logic        ex_control_event;
   logic        control_serialize_q;
   logic        control_commit;
   logic        control_trap_enter;
   logic        control_trap_return;
+  logic        control_sret_return;
   logic        control_debug_enter;
   logic        control_debug_return;
   logic        control_wfi;
+  logic        control_sfence_vma;
+  xlen_t       control_sfence_vma_vaddr;
+  logic [15:0] control_sfence_vma_asid;
   xlen_t       control_trap_pc;
   xlen_t       control_trap_cause;
   xlen_t       control_trap_value;
@@ -217,6 +196,8 @@ module riscv_core #(
   // M0 is M-mode-only, so its corresponding condition is always legal.
   logic        trap_redirect;
   xlen_t       trap_redirect_pc;
+  logic        mem_fault_redirect;
+  xlen_t       mem_fault_redirect_pc;
   logic        debug_redirect;
   xlen_t       debug_redirect_pc;
 
@@ -322,7 +303,9 @@ module riscv_core #(
   // A cacheless FENCE.I still must discard any earlier prefetch. The older
   // store is already complete because a MEM response stalls in-order progress.
   // WFI changes architectural sleep state, so it remains locally suppressed.
-  assign fence_i_redirect    = id_ex_q.valid && id_ex_q.fence_i && backend_advance;
+  assign fence_i_redirect    = id_ex_q.valid &&
+                               (id_ex_q.fence_i || (id_ex_q.sys_op == SYS_SFENCE_VMA)) &&
+                               backend_advance;
   assign fence_i_redirect_pc = id_ex_q.pc + xlen_t'(4);
   // An illegal U-mode WFI reaches WB as a trap rather than a sleep event.
   // WB owns the control-source decode and exports these mutually exclusive
@@ -419,7 +402,7 @@ module riscv_core #(
     if (ENABLE_LOAD_RESPONSE_BYPASS_P) begin : g_load_response_bypass
       assign load_bypass_eligible = if_id_conditional_branch ||
                                     load_store_data_bypass_eligible;
-      assign mem_load_response_ready = data_resp_valid_i || mem_lmem_response;
+      assign mem_load_response_ready = data_resp_valid_i;
       // The dedicated response bypass is an integer GPR path.  An FLW uses
       // the same memory transport but must retire through the FPR path only.
       assign load_response_bypass_valid = load_result_bypass_valid && !ex_mem_q.fp_write;
@@ -558,10 +541,11 @@ module riscv_core #(
     .fpu_wait_i           (fpu_wait),
     .load_use_stall_i     (id_ex_replay_stall),
     // Serialized EX control event
-    .control_event_i      (ex_control_event),
-    // Redirect sources, in frozen arbitration-priority order
-    .trap_redirect_i      (trap_redirect),
-    .trap_redirect_pc_i   (trap_redirect_pc),
+    .control_event_i      (ex_control_event && !mem_fault_redirect),
+    // Redirect sources, in frozen arbitration-priority order. A completed
+    // MEM fault is older than the concurrent EX packet and therefore wins.
+    .trap_redirect_i      (mem_fault_redirect || trap_redirect),
+    .trap_redirect_pc_i   (mem_fault_redirect ? mem_fault_redirect_pc : trap_redirect_pc),
     .debug_redirect_i     (debug_redirect | debug_resume_redirect),
     .debug_redirect_pc_i  (debug_resume_redirect ? debug_dpc : debug_redirect_pc),
     .fence_i_redirect_i   (fence_i_redirect),
@@ -610,6 +594,8 @@ module riscv_core #(
     .imem_ready_i         (imem_ready_i),
     .imem_rvalid_i        (imem_rvalid_i),
     .imem_rdata_i         (imem_rdata_i),
+    .imem_page_fault_i    (imem_page_fault_i),
+    .imem_access_fault_i  (imem_access_fault_i),
     .imem_req_o           (imem_req_o),
     .imem_addr_o          (if_imem_addr),
     // IF/ID boundary
@@ -706,12 +692,19 @@ module riscv_core #(
     // Retired control event from WB
     .control_trap_enter_i (control_trap_enter),
     .control_trap_return_i(control_trap_return),
+    .control_sret_return_i(control_sret_return),
     .control_debug_enter_i(control_debug_enter),
     .control_trap_pc_i    (control_trap_pc),
     .control_trap_cause_i (control_trap_cause),
     .control_trap_value_i (control_trap_value),
     .control_debug_dpc_i  (control_debug_dpc),
     .control_debug_cause_i(control_debug_cause),
+    // A data-side fault is completed in MEM. It suppresses the younger EX
+    // packet while EX supplies delegated trap-vector selection.
+    .mem_fault_valid_i    (mem_fault_valid),
+    .mem_fault_cause_i    (mem_fault_cause),
+    .mem_fault_redirect_o (mem_fault_redirect),
+    .mem_fault_redirect_pc_o(mem_fault_redirect_pc),
     // Debug run control and abstract CSR access
     .debug_mode_i         (debug_mode_q),
     .debug_external_enter_i(debug_external_enter),
@@ -759,10 +752,12 @@ module riscv_core #(
     .muldiv_wait_o        (muldiv_wait),
     .fp_frm_o             (fp_frm),
     .fp_fs_off_o          (fp_fs_off),
-    // Optional local-memory read handshake
-    .lmem_accept_i        (lmem_accept),
-    .lmem_req_o           (lmem_req_internal),
-    .lmem_addr_o          (lmem_addr_internal)
+    .satp_o               (satp_o),
+    .privilege_mode_o     (privilege_mode_o),
+    .mstatus_sum_o        (mstatus_sum_o),
+    .mstatus_mxr_o        (mstatus_mxr_o),
+    .mstatus_mprv_o       (mstatus_mprv_o),
+    .mstatus_mpp_o        (mstatus_mpp_o)
   );
 
   mem_stage mem_stage_i (
@@ -774,10 +769,13 @@ module riscv_core #(
     .mem_wb_fwd_i         (mem_wb_q),
     .ex_mem_en_i          (backend_advance),
     // Normal D-bus transaction (MEM <-> SoC)
-    .data_req_ready_i     (1'b1),
+    .data_req_ready_i     (data_req_ready_i),
     .data_resp_valid_i    (data_resp_valid_i),
     .data_rdata_i         (data_rdata_i),
     .data_err_i           (data_err_i),
+    .data_page_fault_i    (data_page_fault_i),
+    .mem_fault_valid_o    (mem_fault_valid),
+    .mem_fault_cause_o    (mem_fault_cause),
     .data_fence_o         (data_fence_o),
     .data_fence_done_i    (data_fence_done_i),
     .data_fence_err_i     (data_fence_err_i),
@@ -789,11 +787,6 @@ module riscv_core #(
     .data_atomic_op_o     (data_atomic_op_o),
     .data_atomic_aq_o     (data_atomic_aq_o),
     .data_atomic_rl_o     (data_atomic_rl_o),
-    // Optional local-memory read completion (SoC -> MEM)
-    .lmem_resp_valid_i    (lmem_resp_valid),
-    .lmem_rdata_i         (lmem_rdata),
-    .lmem_err_i           (lmem_err),
-    .lmem_response_o      (mem_lmem_response),
     .load_result_bypass_valid_o(load_result_bypass_valid),
     .load_result_bypass_rd_addr_o(load_result_bypass_rd_addr),
     .load_result_bypass_data_o(load_result_bypass_data),
@@ -821,9 +814,13 @@ module riscv_core #(
     .control_commit_o     (control_commit),
     .control_trap_enter_o (control_trap_enter),
     .control_trap_return_o(control_trap_return),
+    .control_sret_return_o(control_sret_return),
     .control_debug_enter_o(control_debug_enter),
     .control_debug_return_o(control_debug_return),
     .control_wfi_o        (control_wfi),
+    .control_sfence_vma_o (control_sfence_vma),
+    .control_sfence_vma_vaddr_o(control_sfence_vma_vaddr),
+    .control_sfence_vma_asid_o(control_sfence_vma_asid),
     .control_trap_pc_o    (control_trap_pc),
     .control_trap_cause_o (control_trap_cause),
     .control_trap_value_o (control_trap_value),
@@ -837,6 +834,9 @@ module riscv_core #(
   // ---------------------------------------------------------------------------
   assign imem_addr_o        = if_imem_addr;
 
+  assign sfence_vma_o       = control_sfence_vma;
+  assign sfence_vma_vaddr_o = control_sfence_vma_vaddr;
+  assign sfence_vma_asid_o  = control_sfence_vma_asid;
   assign debug_halted_o    = debug_halted_q;
   assign debug_running_o   = !debug_halted_q;
   assign debug_pc_o        = debug_dpc;

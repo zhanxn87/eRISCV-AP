@@ -273,6 +273,8 @@ module id_stage #(
   always_comb begin
     id_ex_bypassed = id_ex_d;
     id_ex_bypassed.compressed = if_id_i.compressed;
+    id_ex_bypassed.instruction_page_fault = if_id_i.instruction_page_fault;
+    id_ex_bypassed.instruction_access_fault = if_id_i.instruction_access_fault;
     id_ex_bypassed.jal_early = direct_jump;
     id_ex_bypassed.return_pred_valid = return_pred_valid;
     id_ex_bypassed.return_pred_target = return_pred_target;
@@ -280,8 +282,17 @@ module id_stage #(
     id_ex_bypassed.branch_pred_taken = branch_pred_taken;
     id_ex_bypassed.branch_pred_bht_used = branch_pred_bht_used;
 
-    // Force illegal-instr when the C decompressor detects an illegal encoding.
-    if (if_id_i.compressed && c_illegal) begin
+    // A fetch fault is carried to EX as its own architectural packet. It is
+    // not an illegal instruction and therefore preserves the Sv39 trap cause.
+    if (if_id_i.instruction_page_fault || if_id_i.instruction_access_fault) begin
+      id_ex_bypassed.illegal_instr = 1'b0;
+      id_ex_bypassed.rd_we = 1'b0;
+      id_ex_bypassed.fp_write = 1'b0;
+      id_ex_bypassed.fp_dirty = 1'b0;
+      id_ex_bypassed.mem_load = 1'b0;
+      id_ex_bypassed.mem_store = 1'b0;
+      id_ex_bypassed.atomic_op = ATOMIC_NONE;
+    end else if (if_id_i.compressed && c_illegal) begin
       id_ex_bypassed.illegal_instr = 1'b1;
       // mtval for an illegal instruction reports the original encoding, not
       // the decompressor's harmless default instruction.

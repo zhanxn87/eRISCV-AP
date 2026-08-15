@@ -2,9 +2,12 @@
 
 ## Status
 
-The RV64GC M/U execution baseline is implemented and covered by directed
-core tests. This is not yet M/S/U or Linux-capable: supervisor privilege,
-delegation, `satp`, Sv39, and page-fault control are the next core milestone.
+The RV64GC M/S/U trap baseline is implemented and covered by directed core
+tests: supervisor CSRs, synchronous and interrupt delegation, and `SRET`.
+`SATP`, `SFENCE.VMA`, canonical/PTE checks, ITLB/DTLB, and a shared PTW now have
+focused RTL coverage. `ap_hart_memory_frontend` now integrates virtual
+fetch/data translation and precise instruction/load/store page and access
+faults. Board-level DDR/MIG adaptation, firmware, and Linux boot remain.
 
 The normative AP system and cache contract is
 [eRISCV-AP RV64GC System Architecture Specification](eriscv-ap-rv64gc-system-spec.md).
@@ -59,15 +62,17 @@ interface rather than silently truncating an architectural address.
 4. **F/D** — widen the FPR file to `32 x 64`, configure FPnew for RV64D,
    implement NaN boxing and all F/D decode/conversion/compare/move semantics,
    then validate FCSR and precise retirement.
-5. **S-mode baseline** — add supervisor privilege, delegation, supervisor
-   CSRs/traps, S-level interrupt state, and `SRET`, with directed tests. This
-   must land before virtual memory is exposed.
-6. **Sv39** — add `satp`, ITLB, DTLB, PTW, canonical-address checks,
-   page/access faults, `SFENCE.VMA`, and MPRV interactions. Integrate only
-   after the physical cache path and S-mode baseline are stable.
-7. **Memory-system integration** — I$/D$, cache-line interface, independent
-   AXI masters, MMIO bypass/APB bridge, DDR4/MIG, then Ethernet DMA
-   non-coherence policy.
+5. **S-mode baseline** — **done**: supervisor privilege, delegation, supervisor
+   CSRs/traps, S-level interrupt state, and `SRET` have directed coverage.
+6. **Sv39** — **done for the single-hart RTL**: `satp`, canonical-address/PTE
+   checks, ITLB/DTLB, shared PTW, `SFENCE.VMA`, virtual I/D requests, precise
+   instruction/load/store page and access faults, and MPRV effective privilege
+   are connected through `ap_hart_memory_frontend` while retaining physical
+   cache interfaces below translation.
+7. **Memory-system integration** — **done in portable RTL**: I$/D$,
+   cache-line interface, independent AXI managers, and MMIO bypass/APB bridge.
+   The VCU108 C1 DDR4 MIG source exists; its board-level DDR rebase and
+   64-to-512 adaptation, then Ethernet DMA non-coherence policy, remain.
 
 ## Non-negotiable verification gates
 

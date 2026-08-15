@@ -24,6 +24,7 @@ module icache #(
   output logic                         cpu_ready_o,
   output logic                         cpu_rvalid_o,
   output logic [31:0]                  cpu_rdata_o,
+  output logic                         cpu_err_o,
 
   output logic                         line_req_o,
   output logic [PADDR_W_P-1:0]         line_addr_o,
@@ -60,6 +61,7 @@ module icache #(
   logic [$clog2(WAYS_P)-1:0] lookup_way;
   logic [$clog2(WAYS_P)-1:0] refill_way_q;
   logic [31:0] response_rdata_q;
+  logic response_err_q;
   integer way_index;
   integer set_index;
 
@@ -93,6 +95,7 @@ module icache #(
   assign cpu_ready_o = state_q == IC_IDLE && !invalidate_i;
   assign cpu_rvalid_o = state_q == IC_RESP;
   assign cpu_rdata_o = response_rdata_q;
+  assign cpu_err_o = response_err_q;
   assign line_req_o = state_q == IC_REFILL_REQ;
   assign line_addr_o = {req_addr_q[PADDR_W_P-1:OFFSET_W], {OFFSET_W{1'b0}}};
 
@@ -102,6 +105,7 @@ module icache #(
       req_addr_q <= '0;
       refill_way_q <= '0;
       response_rdata_q <= 32'h0000_0013;
+      response_err_q <= 1'b0;
       for (set_index = 0; set_index < SETS_P; set_index = set_index + 1) begin
         valid_q[set_index] = '0;
         victim_q[set_index] = '0;
@@ -114,12 +118,14 @@ module icache #(
         IC_IDLE: begin
           if (cpu_req_i) begin
             req_addr_q <= cpu_addr_i;
+            response_err_q <= 1'b0;
             state_q <= IC_LOOKUP;
           end
         end
         IC_LOOKUP: begin
           if (lookup_hit) begin
             response_rdata_q <= data_q[lookup_way][req_set][req_word * 32 +: 32];
+            response_err_q <= 1'b0;
             victim_q[req_set] <= lookup_way + 1'b1;
             state_q <= IC_RESP;
           end else begin
@@ -131,15 +137,15 @@ module icache #(
         IC_REFILL_WAIT: begin
           if (line_resp_valid_i) begin
             if (line_err_i) begin
-              // The core I-bus has no error sideband. Return a NOP so the
-              // exception model is not silently fabricated here.
               response_rdata_q <= 32'h0000_0013;
+              response_err_q <= 1'b1;
             end else begin
               data_q[refill_way_q][req_set] <= line_rdata_i;
               tag_q[refill_way_q][req_set] <= req_tag;
               valid_q[req_set][refill_way_q] <= 1'b1;
               victim_q[req_set] <= refill_way_q + 1'b1;
               response_rdata_q <= line_rdata_i[req_word * 32 +: 32];
+              response_err_q <= 1'b0;
             end
             state_q <= IC_RESP;
           end

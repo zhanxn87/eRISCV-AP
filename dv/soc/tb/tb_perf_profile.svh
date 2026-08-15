@@ -262,10 +262,6 @@ longint unsigned perf_load_store_data_selected;
 longint unsigned perf_load_branch_rs1_mismatches;
 longint unsigned perf_load_branch_rs2_mismatches;
 longint unsigned perf_load_store_data_mismatches;
-longint unsigned perf_lmem_candidates;
-longint unsigned perf_lmem_accepted;
-longint unsigned perf_lmem_responses;
-
 longint unsigned perf_ifetch_requests;
 longint unsigned perf_ifetch_latency_total;
 longint unsigned perf_ifetch_latency_0;
@@ -976,9 +972,6 @@ always_ff @(posedge clk or negedge rst_n) begin
     perf_load_branch_rs1_mismatches <= 0;
     perf_load_branch_rs2_mismatches <= 0;
     perf_load_store_data_mismatches <= 0;
-    perf_lmem_candidates <= 0;
-    perf_lmem_accepted <= 0;
-    perf_lmem_responses <= 0;
     perf_ifetch_requests <= 0;
     perf_ifetch_latency_total <= 0;
     perf_ifetch_latency_0 <= 0;
@@ -1609,13 +1602,6 @@ always_ff @(posedge clk or negedge rst_n) begin
             perf_load_store_data_mismatches + 1;
       end
 
-      if (dut.lmem_req)
-        perf_lmem_candidates <= perf_lmem_candidates + 1;
-      if (dut.lmem_accept)
-        perf_lmem_accepted <= perf_lmem_accepted + 1;
-      if (dut.lmem_resp_valid)
-        perf_lmem_responses <= perf_lmem_responses + 1;
-
       if (dut.imem_req && dut.imem_dbus_req)
         perf_if_dbus_imem_request_collisions <=
           perf_if_dbus_imem_request_collisions + 1;
@@ -1854,9 +1840,6 @@ task automatic report_perf_profile;
                perf_load_store_data_selected,
              perf_load_branch_rs1_mismatches + perf_load_branch_rs2_mismatches +
                perf_load_store_data_mismatches);
-    $display("TB PERF LMEM: candidates=%0d accepted=%0d responses=%0d",
-             perf_lmem_candidates, perf_lmem_accepted,
-             perf_lmem_responses);
     $display("TB PERF STALL OVERLAP: ifetch_only=%0d dbus_only=%0d load_use_only=%0d ifetch_dbus=%0d ifetch_load_use=%0d dbus_load_use=%0d all_three=%0d muldiv_only=%0d muldiv_with_other=%0d",
              perf_stall_ifetch_only_cycles, perf_stall_dbus_only_cycles,
              perf_stall_load_use_only_cycles, perf_stall_ifetch_dbus_cycles,

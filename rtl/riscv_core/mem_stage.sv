@@ -6,7 +6,7 @@ import riscv_pkg::*;
 // Memory stage for load/store formatting and MEM/WB packet assembly.
 // Loads are aligned and sign/zero extended here so WB only performs register writeback.
 module mem_stage #(
-  parameter int unsigned PADDR_W_P = PADDR_W
+  parameter int unsigned PADDR_W_P = CORE_XLEN
 ) (
   // Clock and reset
   input  logic        clk,
@@ -17,11 +17,13 @@ module mem_stage #(
   input  var mem_wb_t mem_wb_fwd_i,
   input  logic        ex_mem_en_i,
 
-  // Normal D-bus transaction (MEM <-> SoC)
+  // Normal D-bus transaction (MEM <-> SoC). A request is accepted when
+  // data_req_o and data_req_ready_i are both asserted.
   input  logic        data_req_ready_i,
   input  logic        data_resp_valid_i,
   input  logic [63:0] data_rdata_i,
   input  logic        data_err_i,
+  input  logic        data_page_fault_i,
   // Serialized FENCE completion. data_fence_o remains asserted until the
   // memory system reports that all prior writes are globally observable.
   output logic        data_fence_o,
@@ -36,11 +38,11 @@ module mem_stage #(
   output logic        data_atomic_aq_o,
   output logic        data_atomic_rl_o,
 
-  // Optional local-memory read completion (SoC -> MEM)
-  input  logic        lmem_resp_valid_i,
-  input  logic [63:0] lmem_rdata_i,
-  input  logic        lmem_err_i,
-  output logic        lmem_response_o,
+  // A completed data fault is transported as a CONTROL_EXCEPTION packet by
+  // this stage. EX uses its cause to redirect and flush younger work.
+  output logic        mem_fault_valid_o,
+  output xlen_t       mem_fault_cause_o,
+
   output logic        load_result_bypass_valid_o,
   output logic [4:0]  load_result_bypass_rd_addr_o,
   output xlen_t       load_result_bypass_data_o,
@@ -67,16 +69,13 @@ module mem_stage #(
   logic fence_response;
   logic load_store_data_match;
 
-  // Normal D-bus or local-memory response selection
+  // Normal D-bus response selection
   logic mem_response_valid;
   logic [63:0] response_rdata;
   logic [63:0] shifted_load_data;
   logic response_err;
-
-  // One-entry retention for a local-memory response while EX/MEM is frozen
-  logic lmem_response_hold_q;
-  logic [63:0] lmem_response_data_q;
-  logic lmem_response_err_q;
+  logic mem_fault_valid;
+  logic mem_fault_store;
 
   // ---------------------------------------------------------------------------
   // Memory operation and response qualification
@@ -85,24 +84,25 @@ module mem_stage #(
   assign mem_op = ex_mem_i.valid & (ex_mem_i.mem_load | ex_mem_i.mem_store |
                                     (ex_mem_i.atomic_op != ATOMIC_NONE) |
                                     ex_mem_i.fence);
-  // A fabric target may complete an accepted store in the request cycle.
-  // This remains an address-agnostic core-side handshake: a response matches
-  // either an outstanding request or the request issued in this cycle.
-  // A younger multi-cycle EX operation may hold EX/MEM exactly when the
-  // local-memory response arrives. Retain that one response until the older
-  // load packet is allowed to leave EX/MEM.
-  assign lmem_response_o = ex_mem_i.lmem_load &&
-                           (lmem_resp_valid_i || lmem_response_hold_q);
+  // Responses are registered: an accepted request enters mem_pending_q
+  // before the fabric may return its response. This avoids a combinational
+  // response loop through a shared instruction/data arbiter.
   assign fence_response = ex_mem_i.valid && ex_mem_i.fence && data_fence_done_i;
   assign mem_response_valid = ex_mem_i.fence ? fence_response :
-                              (lmem_response_o ||
-                               (data_resp_valid_i & (mem_pending_q | data_req_o)));
-  assign response_rdata = ex_mem_i.fence ? '0 : lmem_response_o ?
-                        (lmem_resp_valid_i ? lmem_rdata_i : lmem_response_data_q) :
-                        data_rdata_i;
-  assign response_err = ex_mem_i.fence ? data_fence_err_i : lmem_response_o ?
-                      (lmem_resp_valid_i ? lmem_err_i : lmem_response_err_q) :
-                      data_err_i;
+                              (data_resp_valid_i & mem_pending_q);
+  assign response_rdata = ex_mem_i.fence ? '0 : data_rdata_i;
+  assign response_err = ex_mem_i.fence ? data_fence_err_i : data_err_i;
+  assign mem_fault_valid = mem_response_valid && !ex_mem_i.fence && response_err;
+  assign mem_fault_store = ex_mem_i.mem_store ||
+                           ((ex_mem_i.atomic_op != ATOMIC_NONE) &&
+                            (ex_mem_i.atomic_op != ATOMIC_LR));
+  assign mem_fault_valid_o = mem_fault_valid;
+  always_comb begin
+    if (data_page_fault_i)
+      mem_fault_cause_o = mem_fault_store ? xlen_t'(15) : xlen_t'(13);
+    else
+      mem_fault_cause_o = mem_fault_store ? xlen_t'(7) : xlen_t'(5);
+  end
   assign shifted_load_data = response_rdata >> (addr_offset * 8);
   // Preserve MEM/WB as the architectural completion boundary while exposing
   // a successfully completed load only to the dedicated branch/store-data
@@ -199,12 +199,12 @@ module mem_stage #(
 
   // ---------------------------------------------------------------------------
   // D-bus interface
-  // A request is issued once per EX/MEM packet and held pending until response.
-  // data_req_ready_i is the bus-admission qualifier.
+  // A request remains valid until it is accepted, then remains pending until
+  // its response. Keeping valid independent of ready avoids a core/fabric
+  // combinational loop when the fabric arbitrates instruction and data ports.
   // ---------------------------------------------------------------------------
   assign data_fence_o = ex_mem_i.valid && ex_mem_i.fence;
-  assign data_req_o   = mem_op && !ex_mem_i.fence && !ex_mem_i.lmem_load &&
-                        !mem_pending_q && data_req_ready_i;
+  assign data_req_o   = mem_op && !ex_mem_i.fence && !mem_pending_q;
   assign data_addr_o  = ex_mem_i.data_addr[PADDR_W_P-1:0];
   assign data_wdata_o = store_wdata;
   assign data_we_o    = mem_op && ex_mem_i.mem_store;
@@ -228,6 +228,8 @@ module mem_stage #(
     mem_wb_d.control_trap_value = ex_mem_i.control_trap_value;
     mem_wb_d.control_debug_dpc  = ex_mem_i.control_debug_dpc;
     mem_wb_d.control_debug_cause = ex_mem_i.control_debug_cause;
+    mem_wb_d.control_sfence_vma_vaddr = ex_mem_i.control_sfence_vma_vaddr;
+    mem_wb_d.control_sfence_vma_asid = ex_mem_i.control_sfence_vma_asid;
     mem_wb_d.wb_data = ex_mem_i.mem_load ? load_data : ex_mem_i.ex_result;
     mem_wb_d.rd_addr = ex_mem_i.rd_addr;
     mem_wb_d.rd_we   = ex_mem_i.rd_we & !response_err;
@@ -237,6 +239,15 @@ module mem_stage #(
     mem_wb_d.fp_dst_fmt = ex_mem_i.fp_dst_fmt;
     mem_wb_d.fp_rd_addr = ex_mem_i.fp_rd_addr;
     mem_wb_d.fp_fflags = ex_mem_i.fp_fflags;
+    if (mem_fault_valid) begin
+      mem_wb_d.control_source = CONTROL_EXCEPTION;
+      mem_wb_d.control_trap_pc = ex_mem_i.pc;
+      mem_wb_d.control_trap_cause = mem_fault_cause_o;
+      mem_wb_d.control_trap_value = ex_mem_i.data_addr;
+      mem_wb_d.rd_we = 1'b0;
+      mem_wb_d.fp_write = 1'b0;
+      mem_wb_d.fp_dirty = 1'b0;
+    end
   end
 
   // ---------------------------------------------------------------------------
@@ -246,20 +257,9 @@ module mem_stage #(
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       mem_pending_q <= 1'b0;
-      lmem_response_hold_q <= 1'b0;
-      lmem_response_data_q <= '0;
-      lmem_response_err_q <= 1'b0;
       mem_wb_o <= '0;
     end else begin
-      if (ex_mem_en_i) begin
-        lmem_response_hold_q <= 1'b0;
-      end else if (ex_mem_i.lmem_load && lmem_resp_valid_i) begin
-        lmem_response_hold_q <= 1'b1;
-        lmem_response_data_q <= lmem_rdata_i;
-        lmem_response_err_q <= lmem_err_i;
-      end
-
-      if (data_req_o && !data_resp_valid_i) begin
+      if (data_req_o && data_req_ready_i && !data_resp_valid_i) begin
         mem_pending_q <= 1'b1;
       end else if (mem_response_valid) begin
         mem_pending_q <= 1'b0;

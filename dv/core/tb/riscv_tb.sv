@@ -111,6 +111,9 @@ module riscv_tb #(
     .debug_running_o(debug_running),
     .debug_pc_o     (debug_pc),
     .debug_cause_o  (debug_cause),
+    .sfence_vma_o(),
+    .sfence_vma_vaddr_o(),
+    .sfence_vma_asid_o(),
     .irq_i          (irq_i)
   );
 

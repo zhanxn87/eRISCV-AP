@@ -40,12 +40,20 @@ module ex_stage #(
   // Retired control event from WB
   input  logic        control_trap_enter_i,
   input  logic        control_trap_return_i,
+  input  logic        control_sret_return_i,
   input  logic        control_debug_enter_i,
   input  xlen_t       control_trap_pc_i,
   input  xlen_t       control_trap_cause_i,
   input  xlen_t       control_trap_value_i,
   input  xlen_t       control_debug_dpc_i,
   input  logic [2:0]  control_debug_cause_i,
+
+  // Older data faults complete in MEM. They suppress this younger EX packet;
+  // EX still owns the CSR delegation and trap-vector selection.
+  input  logic        mem_fault_valid_i,
+  input  xlen_t       mem_fault_cause_i,
+  output logic        mem_fault_redirect_o,
+  output xlen_t       mem_fault_redirect_pc_o,
 
   // Debug run control and abstract CSR access
   input  logic        debug_mode_i,
@@ -74,6 +82,14 @@ module ex_stage #(
   output logic [2:0]   fp_frm_o,
   output logic         fp_fs_off_o,
 
+  // Hart-local MMU context exported from the CSR state.
+  output xlen_t        satp_o,
+  output privilege_mode_e privilege_mode_o,
+  output logic         mstatus_sum_o,
+  output logic         mstatus_mxr_o,
+  output logic         mstatus_mprv_o,
+  output privilege_mode_e mstatus_mpp_o,
+
   // Redirect and Debug-entry results
   output logic        branch_redirect_o,
   output xlen_t       branch_redirect_pc_o,
@@ -96,14 +112,7 @@ module ex_stage #(
 
   output logic         control_event_o,
   output logic         wfi_redirect_o,
-  output logic         muldiv_wait_o,
-
-  // Optional local-memory read handshake. The SoC admits only an idle local
-  // SRAM port; an unaccepted candidate falls
-  // back to the normal MEM-stage D-bus request.
-  input  logic        lmem_accept_i,
-  output logic        lmem_req_o,
-  output paddr_t      lmem_addr_o
+  output logic         muldiv_wait_o
 );
 
   // EX/MEM boundary
@@ -120,10 +129,13 @@ module ex_stage #(
   control_source_e control_source;
   logic    control_exception;
   logic    control_mret;
+  logic    control_sret;
   logic    control_debug_enter;
   logic    control_debug_step;
   logic    control_dret;
   logic    control_wfi;
+  logic    control_sfence_vma;
+  logic    sfence_vma_event;
   logic    control_allows_side_effects;
   logic    debug_enter;
   logic    wfi_legal;
@@ -173,6 +185,7 @@ module ex_stage #(
   xlen_t       csr_trap_cause;
   xlen_t       csr_trap_value;
   logic        csr_trap_return;
+  logic        csr_trap_sret;
   logic        csr_debug_enter;
   xlen_t       csr_debug_dpc;
   logic [2:0]  csr_debug_cause;
@@ -186,12 +199,20 @@ module ex_stage #(
   privilege_mode_e privilege_mode;
   privilege_mode_e mstatus_mpp;
   privilege_mode_e effective_data_privilege;
+  logic        mstatus_tsr;
+  logic        mstatus_tvm;
+  logic        mstatus_sum;
+  logic        mstatus_mxr;
   logic        mstatus_tw;
   logic        mstatus_mprv;
 
   logic        ex_mem_data_access;
   xlen_t       mtvec;
   xlen_t       mepc;
+  xlen_t       stvec;
+  xlen_t       sepc;
+  xlen_t       medeleg;
+  xlen_t       trap_vector;
   xlen_t       dpc;
   logic        dcsr_step;
   logic        dcsr_ebreakm;
@@ -203,11 +224,15 @@ module ex_stage #(
   logic        dret_return;
   logic        sync_exception_trap;
   logic        interrupt_ready;
+  logic        interrupt_to_s;
   xlen_t       interrupt_cause;
   logic        interrupt_trap;
   logic        exception_trap;
+  logic        trap_to_s;
+  logic        sret_return;
   xlen_t       trap_value;
   xlen_t       trap_cause;
+  logic        mem_fault_to_s;
 
   // Debug single-step and trigger qualification
   logic        step_active_q;
@@ -243,7 +268,7 @@ module ex_stage #(
   // A full MEM stall freezes the EX/MEM boundary. Trap/debug/redirect side
   // effects must freeze with it so a stalled instruction cannot redirect fetch
   // or update CSRs before its packet is allowed to advance.
-  assign ex_side_effects_en = ex_mem_en_i;
+  assign ex_side_effects_en = ex_mem_en_i && !mem_fault_valid_i;
   assign ex_accept = id_ex_i.valid && ex_side_effects_en;
 
   // M1's iterative unit starts independently of the EX/MEM enable. This lets
@@ -339,20 +364,11 @@ module ex_stage #(
   assign instr_next_pc = id_ex_i.pc + (id_ex_i.compressed ? xlen_t'(2) : xlen_t'(4));
 
   // ---------------------------------------------------------------------------
-  // Memory-access qualification shared by local-memory request paths.
+  // Memory-access qualification.
   // ---------------------------------------------------------------------------
   assign ex_mem_data_access = ex_complete && control_allows_side_effects &&
                               (id_ex_i.mem_load || id_ex_i.mem_store ||
                                (id_ex_i.atomic_op != ATOMIC_NONE));
-
-  // ---------------------------------------------------------------------------
-  // Local-memory load request
-  // ---------------------------------------------------------------------------
-  // The SoC accepts only DTCM candidates from the dedicated load address
-  // path; all other targets retain the normal MEM-stage D-bus path.
-  assign lmem_req_o  = ex_mem_data_access && id_ex_i.mem_load &&
-                       (id_ex_i.atomic_op == ATOMIC_NONE);
-  assign lmem_addr_o = mem_addr[PADDR_W-1:0];
 
   // M2 FPU legality is independent of memory-protection policy.
   always_comb begin
@@ -375,23 +391,30 @@ module ex_stage #(
     .debug_mode_i               (debug_mode_i),
     .privilege_mode_i           (privilege_mode),
     .mstatus_tw_i               (mstatus_tw),
+    .mstatus_tsr_i              (mstatus_tsr),
+    .mstatus_tvm_i              (mstatus_tvm),
+    .medeleg_i                  (medeleg),
     .csr_illegal_access_i       (csr_illegal_access),
     .dcsr_ebreakm_i             (dcsr_ebreakm),
     // Resolved EX data result
     .alu_result_i               ((id_ex_i.mem_load || id_ex_i.mem_store ||
                                   (id_ex_i.atomic_op != ATOMIC_NONE)) ? mem_addr : alu_result),
-    // Instruction-side access fault and interrupt arbitration
-    .instruction_access_fault_i (1'b0),
+    // Instruction-side translation/access faults and interrupt arbitration
+    .instruction_page_fault_i   (id_ex_i.instruction_page_fault),
+    .instruction_access_fault_i (id_ex_i.instruction_access_fault),
     .interrupt_ready_i          (interrupt_ready),
+    .interrupt_to_s_i           (interrupt_to_s),
     .interrupt_cause_i          (interrupt_cause),
     // Debug and architectural-return outcomes
     .ebreak_debug_entry_o       (ebreak_debug_entry),
     .mret_trap_o                (mret_trap),
+    .sret_return_o              (sret_return),
     .dret_return_o              (dret_return),
     // Trap classification and WFI legality
     .sync_exception_trap_o      (sync_exception_trap),
     .interrupt_trap_o           (interrupt_trap),
     .exception_trap_o           (exception_trap),
+    .trap_to_s_o                (trap_to_s),
     .wfi_legal_o                (wfi_legal),
     .trap_cause_o               (trap_cause),
     .trap_value_o               (trap_value)
@@ -419,7 +442,7 @@ module ex_stage #(
 
   assign trigger_debug_entry = (mcontrol_hit || icount_hit) &&
                                !exception_trap &&
-                               !mret_trap && !dret_return && !ebreak_debug_entry;
+                               !mret_trap && !sret_return && !dret_return && !ebreak_debug_entry;
   // EBREAK and trigger hits enter Debug before EX/MEM completes. Single-step
   // remains separate because it observes the completed instruction.
   assign debug_exception_entry = ebreak_debug_entry | trigger_debug_entry;
@@ -429,8 +452,12 @@ module ex_stage #(
   // Redirects are stall-gated so jumps/branches cannot fire early and strand
   // their own link/writeback state behind a held EX/MEM register.
   // ---------------------------------------------------------------------------
-  assign ex_kill = exception_trap | mret_trap | dret_return |
-                   debug_exception_entry | wfi_event;
+  // trap_control includes S-mode TVM/U-mode legality. A synchronous trap
+  // suppresses the architectural SFENCE.VMA packet.
+  assign sfence_vma_event = ex_accept && (id_ex_i.sys_op == SYS_SFENCE_VMA) &&
+                            !exception_trap;
+  assign ex_kill = exception_trap | mret_trap | sret_return | dret_return |
+                   debug_exception_entry | wfi_event | sfence_vma_event;
   // A completed EX instruction may enter MEM/WB or issue a normal control-flow
   // redirect. Trap and Debug outcomes instead consume the instruction here.
   assign ex_complete = ex_accept && !ex_kill &&
@@ -489,7 +516,7 @@ module ex_stage #(
 
   assign step_dpc = control_transfer_taken ? branch_redirect_pc_o : instr_next_pc;
   assign step_debug_entry = step_active_q && ex_accept && !debug_mode_i &&
-                            !exception_trap && !mret_trap && !dret_return &&
+                            !exception_trap && !mret_trap && !sret_return && !dret_return &&
                             !ebreak_debug_entry;
   // WFI is a serializing control event. Its successor redirect is resolved
   // in EX, while the sleep state changes only when the packet reaches WB.
@@ -500,16 +527,20 @@ module ex_stage #(
   // priority encoder and documents the architectural arbitration directly.
   assign control_exception   = exception_trap;
   assign control_mret        = !control_exception && mret_trap;
-  assign control_debug_enter = !control_exception && !control_mret &&
+  assign control_sret        = !control_exception && !control_mret && sret_return;
+  assign control_debug_enter = !control_exception && !control_mret && !control_sret &&
                                debug_exception_entry;
-  assign control_debug_step  = !control_exception && !control_mret &&
+  assign control_debug_step  = !control_exception && !control_mret && !control_sret &&
                                !control_debug_enter && step_debug_entry;
-  assign control_dret        = !control_exception && !control_mret &&
+  assign control_dret        = !control_exception && !control_mret && !control_sret &&
                                !control_debug_enter && !control_debug_step &&
                                dret_return;
-  assign control_wfi         = !control_exception && !control_mret &&
+  assign control_wfi         = !control_exception && !control_mret && !control_sret &&
                                !control_debug_enter && !control_debug_step && !control_dret &&
                                wfi_event;
+  assign control_sfence_vma  = !control_exception && !control_mret && !control_sret &&
+                               !control_debug_enter && !control_debug_step && !control_dret &&
+                               !control_wfi && sfence_vma_event;
 
   always_comb begin
     control_source = CONTROL_NONE;
@@ -517,6 +548,8 @@ module ex_stage #(
       control_source = CONTROL_EXCEPTION;
     else if (control_mret)
       control_source = CONTROL_MRET;
+    else if (control_sret)
+      control_source = CONTROL_SRET;
     else if (control_debug_enter)
       control_source = CONTROL_DEBUG_ENTER;
     else if (control_debug_step)
@@ -525,10 +558,12 @@ module ex_stage #(
       control_source = CONTROL_DRET;
     else if (control_wfi)
       control_source = CONTROL_WFI;
+    else if (control_sfence_vma)
+      control_source = CONTROL_SFENCE_VMA;
   end
-  assign control_event = control_exception | control_mret |
+  assign control_event = control_exception | control_mret | control_sret |
                          control_debug_enter | control_debug_step | control_dret |
-                         control_wfi;
+                         control_wfi | control_sfence_vma;
   // A single-step Debug entry retires the triggering instruction. All other
   // serialized control packets suppress its architectural side effects.
   // Keep this local predicate separate from control_source: the enum is
@@ -536,13 +571,21 @@ module ex_stage #(
   assign control_allows_side_effects = !control_event | control_debug_step;
   assign control_event_o = control_event;
   assign wfi_redirect_o  = control_wfi;
-  assign trap_redirect_o      = exception_trap | mret_trap;
+  assign trap_vector          = trap_to_s ? stvec : mtvec;
+  assign mem_fault_to_s       = (privilege_mode != PRIV_M) &&
+                                medeleg[mem_fault_cause_i[5:0]];
+  assign mem_fault_redirect_o = mem_fault_valid_i;
+  assign mem_fault_redirect_pc_o = mem_fault_to_s ?
+                                      {stvec[CORE_XLEN-1:2], 2'b00} :
+                                      {mtvec[CORE_XLEN-1:2], 2'b00};
+  assign trap_redirect_o      = exception_trap | mret_trap | sret_return;
   assign trap_redirect_pc_o   = mret_trap ? mepc :
+                                sret_return ? sepc :
                                 ((interrupt_trap &&
-                                  (mtvec[1:0] == 2'b01)) ?
-                                 ({mtvec[CORE_XLEN-1:2], 2'b00} +
+                                  (trap_vector[1:0] == 2'b01)) ?
+                                 ({trap_vector[CORE_XLEN-1:2], 2'b00} +
                                   ((interrupt_cause & ~(xlen_t'(1) << (CORE_XLEN-1))) << 2)) :
-                                 {mtvec[CORE_XLEN-1:2], 2'b00});
+                                 {trap_vector[CORE_XLEN-1:2], 2'b00});
   assign debug_enter          = debug_external_enter_i | debug_exception_entry | step_debug_entry;
   assign debug_redirect_o     = debug_exception_entry | step_debug_entry | dret_return;
   assign debug_redirect_pc_o  = dret_return ? dpc :
@@ -567,7 +610,7 @@ module ex_stage #(
                                                   (id_ex_i.branch_op != BR_NONE);
     hpm_event[HPM_EVENT_BRANCH_TAKEN[HPM_EVENT_INDEX_W-1:0]]          = ex_complete && (id_ex_i.branch_op != BR_NONE) && branch_taken;
     hpm_event[HPM_EVENT_CONTROL_TRANSFER_RETIRED[HPM_EVENT_INDEX_W-1:0]] =
-        (ex_complete && (id_ex_i.jump_op != JUMP_NONE)) || mret_trap;
+        (ex_complete && (id_ex_i.jump_op != JUMP_NONE)) || mret_trap || sret_return;
     hpm_event[HPM_EVENT_EXCEPTION_TAKEN[HPM_EVENT_INDEX_W-1:0]]       = sync_exception_trap;
     hpm_event[HPM_EVENT_INTERRUPT_TAKEN[HPM_EVENT_INDEX_W-1:0]]       = interrupt_trap;
     hpm_event[HPM_EVENT_IFETCH_WAIT_CYCLES[HPM_EVENT_INDEX_W-1:0]]    = hpm_ifetch_wait_i;
@@ -601,6 +644,7 @@ module ex_stage #(
   assign csr_trap_cause  = control_trap_cause_i;
   assign csr_trap_value  = control_trap_value_i;
   assign csr_trap_return = control_trap_return_i;
+  assign csr_trap_sret   = control_sret_return_i;
 
   // An external halt enters Debug immediately; otherwise consume the retired
   // Debug control packet from WB. Keep this arbitration outside the CSR port
@@ -616,7 +660,7 @@ module ex_stage #(
   // A trigger counter observes accepted instruction completion. Preserve the
   // existing exception, return, and EBREAK exclusions.
   assign trigger_retire = ex_accept && !debug_mode_i &&
-                          !exception_trap && !mret_trap && !dret_return &&
+                          !exception_trap && !mret_trap && !sret_return && !dret_return &&
                           !ebreak_debug_entry;
 
   csr_file #(
@@ -641,6 +685,7 @@ module ex_stage #(
     .trap_cause_i         (csr_trap_cause),
     .trap_value_i         (csr_trap_value),
     .trap_return_i        (csr_trap_return),
+    .trap_sret_i          (csr_trap_sret),
     // Debug entry and run state
     .debug_enter_i        (csr_debug_enter),
     .debug_dpc_i          (csr_debug_dpc),
@@ -673,21 +718,35 @@ module ex_stage #(
     // Architectural trap and Debug state views
     .mtvec_o              (mtvec),
     .mepc_o               (mepc),
+    .stvec_o              (stvec),
+    .sepc_o               (sepc),
+    .medeleg_o            (medeleg),
     .dpc_o                (dpc),
     .dcsr_step_o          (dcsr_step),
     .dcsr_ebreakm_o       (dcsr_ebreakm),
     .dcsr_cause_o         (dcsr_cause),
     // Interrupt arbitration result
     .interrupt_ready_o    (interrupt_ready),
+    .interrupt_to_s_o     (interrupt_to_s),
     .interrupt_cause_o    (interrupt_cause),
     .privilege_mode_o     (privilege_mode),
+    .mstatus_tsr_o        (mstatus_tsr),
     .mstatus_tw_o         (mstatus_tw),
     .mstatus_mprv_o       (mstatus_mprv),
-    .mstatus_mpp_o        (mstatus_mpp)
+    .mstatus_mpp_o        (mstatus_mpp),
+    .mstatus_tvm_o        (mstatus_tvm),
+    .mstatus_sum_o        (mstatus_sum),
+    .mstatus_mxr_o        (mstatus_mxr),
+    .satp_o               (satp_o)
   );
 
   assign fp_frm_o = fp_frm;
   assign fp_fs_off_o = fp_fs_off;
+  assign privilege_mode_o = privilege_mode;
+  assign mstatus_sum_o = mstatus_sum;
+  assign mstatus_mxr_o = mstatus_mxr;
+  assign mstatus_mprv_o = mstatus_mprv;
+  assign mstatus_mpp_o = mstatus_mpp;
 
   // ---------------------------------------------------------------------------
   // EX/MEM packet and local sequential state
@@ -705,6 +764,8 @@ module ex_stage #(
     ex_mem_d.control_trap_value = trap_value;
     ex_mem_d.control_debug_dpc  = debug_entry_dpc;
     ex_mem_d.control_debug_cause = debug_entry_cause;
+    ex_mem_d.control_sfence_vma_vaddr = rs1_data;
+    ex_mem_d.control_sfence_vma_asid = rs2_data[15:0];
     ex_mem_d.compressed = id_ex_i.compressed;
     ex_mem_d.ex_result = id_ex_i.fp_op ? xlen_t'(fpu_complete_i.result) :
                          id_ex_i.csr_access ? csr_rdata :
@@ -715,7 +776,6 @@ module ex_stage #(
                           xlen_t'(id_ex_i.fp_rs2_data) : rs2_data;
     ex_mem_d.store_rs2_addr = id_ex_i.rs2_addr;
     ex_mem_d.load_store_data_bypass = load_store_data_match;
-    ex_mem_d.lmem_load = lmem_req_o && lmem_accept_i;
     ex_mem_d.fence     = ex_mem_d.valid && control_allows_side_effects &&
                          id_ex_i.fence;
     ex_mem_d.rd_addr   = id_ex_i.rd_addr;

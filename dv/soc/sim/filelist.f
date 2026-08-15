@@ -9,3 +9,7 @@
 ../../core/tb/axi4_line_mem.sv
 ../tb/ap_soc_elab_tb.sv
 ../tb/ap_soc_periph_route_tb.sv
+../tb/ap_peripheral_subsystem_tb.sv
+../tb/ap_soc_sv39_route_tb.sv
+../tb/ap_soc_sv39_fault_tb.sv
+../tb/ap_soc_debug_route_tb.sv

@@ -1,5 +1,10 @@
 // riscv_core RTL filelist — synthesis / lint target.
 riscv_pkg.sv
+mmu/sv39_pkg.sv
+mmu/sv39_pte_check.sv
+mmu/sv39_ptw.sv
+mmu/sv39_tlb.sv
+mmu/sv39_mmu_ctrl.sv
 -f fpu/filelist.f
 pipeline_control.sv
 regfile.sv

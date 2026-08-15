@@ -9,8 +9,9 @@ MODELSIM_GUI_TEST ?=
 WAVE ?= $(shell find visual_waves waves -maxdepth 1 -type f \( -name '*.fst' -o -name '*.vcd' -o -name '*.ghw' \) -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)
 FULL_TESTS ?= --directed-only --act-full
 SMOKE_TESTS ?= --directed-only --compliance-smoke --act-smoke
-RV64_TESTS = MCU-RV64-CORE-01 MCU-RV64-ALU-CFLOW-01 MCU-RV64-M-01 MCU-RV64-LDST-01 MCU-RV64-C-CROSSWORD-01 MCU-RV64-FD-MOVE-01 MCU-RV64-FD-01 MCU-RV64-A-01 MCU-RV64-FENCE-01
+RV64_TESTS = MCU-RV64-CORE-01 MCU-RV64-ALU-CFLOW-01 MCU-RV64-M-01 MCU-RV64-LDST-01 MCU-RV64-C-CROSSWORD-01 MCU-RV64-FD-MOVE-01 MCU-RV64-FD-01 MCU-RV64-A-01 MCU-RV64-FENCE-01 MCU-RV64-SMODE-01 MCU-RV64-SFENCE-01
 RV64_OBJ_DIR ?= /tmp/eriscv_ap_rv64_directed_obj
+SFENCE_VMA_META_OBJ_DIR ?= /tmp/eriscv_ap_sfence_vma_meta_obj
 RV64_MAX_CYCLES ?= 1600
 REGRESSION_FLAGS = $(if $(filter full,$(MAKECMDGOALS)),$(FULL_TESTS),$(if $(filter smoke,$(MAKECMDGOALS)),$(SMOKE_TESTS),$(TESTS)))
 
@@ -18,7 +19,7 @@ FILELIST_RESOLVER = ../../../tools/project/resolve_filelist.py
 
 .DEFAULT_GOAL := verilator
 
-.PHONY: all help filelist check-filelist list verilator modelsim modelsim-gui auto wave visual surfer full smoke rv64-directed bht-predictor icache dcache cache-axi clean
+.PHONY: all help filelist check-filelist list verilator modelsim modelsim-gui auto wave visual surfer full smoke rv64-directed smode-csr sfence-vma-meta sv39-pte sv39-ptw sv39-tlb sv39-mmu-ctrl bht-predictor icache dcache cache-axi clean
 
 all: verilator
 
@@ -36,7 +37,12 @@ help:
 	@echo "  make modelsim-gui MODELSIM_GUI_TEST=P1-ALU-01"
 	@echo "  make full [BACKEND=verilator]"
 	@echo "  make smoke"
-	@echo "  make rv64-directed          (RV64I/M/C directed regression)"
+	@echo "  make rv64-directed          (RV64GC directed regression)"
+	@echo "  make smode-csr              (S-mode CSR/delegation unit test)"
+	@echo "  make sfence-vma-meta        (retired SFENCE.VMA VA/ASID selector test)"
+	@echo "  make sv39-pte               (Sv39 PTE permission unit test)"
+	@echo "  make sv39-ptw               (shared Sv39 page-table walker unit test)"
+	@echo "  make sv39-tlb               (Sv39 ITLB/DTLB primitive unit test)"
 	@echo "  make verilator [TESTS=P1-ALU-01]"
 	@echo "  make auto      [TESTS=P1-ALU-01]"
 	@echo "  make cache-axi              (64-bit AXI4 cache-line transport unit test)"
@@ -72,6 +78,30 @@ rv64-directed: filelist
 	  $(RV64_OBJ_DIR)/Vriscv_tb +tc=$$tc +instr_mem_file=../tests/RV64/$$tc.mem +expected_regs_file=../tests/RV64/$$tc.expected $$extra_args +max_cycles=$(RV64_MAX_CYCLES) || exit $$?; \
 	done
 
+smode-csr:
+	verilator --binary --timing -Wno-fatal --top-module csr_smode_tb ../../../rtl/riscv_core/riscv_pkg.sv ../../../rtl/riscv_core/csr_file.sv ../tb/csr_smode_tb.sv --Mdir /tmp/eriscv_ap_smode_csr_obj
+	/tmp/eriscv_ap_smode_csr_obj/Vcsr_smode_tb
+
+sfence-vma-meta: filelist
+	verilator --binary --timing -Wno-fatal -Wno-BLKANDNBLK --top-module sfence_vma_metadata_tb -f file.list --Mdir $(SFENCE_VMA_META_OBJ_DIR)
+	$(SFENCE_VMA_META_OBJ_DIR)/Vsfence_vma_metadata_tb
+
+sv39-pte:
+	verilator --binary --timing -Wno-fatal --top-module sv39_pte_check_tb ../../../rtl/riscv_core/riscv_pkg.sv ../../../rtl/riscv_core/mmu/sv39_pkg.sv ../../../rtl/riscv_core/mmu/sv39_pte_check.sv ../tb/sv39_pte_check_tb.sv --Mdir /tmp/eriscv_ap_sv39_pte_obj
+	/tmp/eriscv_ap_sv39_pte_obj/Vsv39_pte_check_tb
+
+sv39-ptw:
+	verilator --binary --timing -Wno-fatal --top-module sv39_ptw_tb ../../../rtl/riscv_core/riscv_pkg.sv ../../../rtl/riscv_core/mmu/sv39_pkg.sv ../../../rtl/riscv_core/mmu/sv39_pte_check.sv ../../../rtl/riscv_core/mmu/sv39_ptw.sv ../tb/sv39_ptw_tb.sv --Mdir /tmp/eriscv_ap_sv39_ptw_obj
+	/tmp/eriscv_ap_sv39_ptw_obj/Vsv39_ptw_tb
+
+sv39-tlb:
+	verilator --binary --timing -Wno-fatal --top-module sv39_tlb_tb ../../../rtl/riscv_core/riscv_pkg.sv ../../../rtl/riscv_core/mmu/sv39_pkg.sv ../../../rtl/riscv_core/mmu/sv39_pte_check.sv ../../../rtl/riscv_core/mmu/sv39_tlb.sv ../tb/sv39_tlb_tb.sv --Mdir /tmp/eriscv_ap_sv39_tlb_obj
+	/tmp/eriscv_ap_sv39_tlb_obj/Vsv39_tlb_tb
+
+sv39-mmu-ctrl:
+	verilator --binary --timing -Wno-fatal --top-module sv39_mmu_ctrl_tb ../../../rtl/riscv_core/riscv_pkg.sv ../../../rtl/riscv_core/mmu/sv39_pkg.sv ../../../rtl/riscv_core/mmu/sv39_pte_check.sv ../../../rtl/riscv_core/mmu/sv39_ptw.sv ../../../rtl/riscv_core/mmu/sv39_tlb.sv ../../../rtl/riscv_core/mmu/sv39_mmu_ctrl.sv ../tb/sv39_mmu_ctrl_tb.sv --Mdir /tmp/eriscv_ap_sv39_mmu_ctrl_obj
+	/tmp/eriscv_ap_sv39_mmu_ctrl_obj/Vsv39_mmu_ctrl_tb
+
 verilator:
 	$(PYTHON) run_regression.py --backend verilator $(REGRESSION_FLAGS)
 
@@ -91,7 +121,7 @@ bht-predictor:
 	./obj_dir_bht/Vbranch_predictor_tb
 
 cache-axi:
-	verilator --binary --timing -Wno-fatal --top-module cache_axi4_line_adapter_tb ../../../rtl/soc/axi/cache_axi4_line_adapter.sv ../tb/cache_axi4_line_adapter_tb.sv --Mdir /tmp/eriscv_ap_cache_axi_obj
+	verilator --binary --timing -Wno-fatal -I../../../rtl/vendor/axi/include --top-module cache_axi4_line_adapter_tb ../../../rtl/vendor/axi/src/axi_pkg.sv ../../../rtl/vendor/axi/src/axi_intf.sv ../../../rtl/soc/axi/cache_axi4_line_adapter.sv ../tb/cache_axi4_line_adapter_tb.sv --Mdir /tmp/eriscv_ap_cache_axi_obj
 	/tmp/eriscv_ap_cache_axi_obj/Vcache_axi4_line_adapter_tb
 
 icache:

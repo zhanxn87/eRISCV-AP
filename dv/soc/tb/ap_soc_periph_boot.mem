@@ -1,5 +1,5 @@
 // Reset vector is Boot ROM byte address 0x80, word index 0x20.
-// x1 = AP_APB_BASE; ld x2, 0(x1).
+// x1 = AP_UART0_BASE; ld x2, 0(x1).
 @00000020
-001000b7
+100000b7
 0000b103

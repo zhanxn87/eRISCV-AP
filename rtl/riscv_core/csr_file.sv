@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 Xianning Zhan
 // SPDX-License-Identifier: BSD-3-Clause
 
-// Machine/debug CSR block for the teaching core.
-// M1 adds U-mode counter access to the common CSR subset.
+// RV64 M/S/U CSR block with Sv39 SATP architectural state.
 import riscv_pkg::*;
 
 module csr_file #(
@@ -27,6 +26,7 @@ module csr_file #(
   input  xlen_t       trap_cause_i,
   input  xlen_t       trap_value_i,
   input  logic        trap_return_i,
+  input  logic        trap_sret_i,
 
   // Debug entry and run state
   input  logic        debug_enter_i,
@@ -66,6 +66,9 @@ module csr_file #(
   // Architectural trap and Debug state views
   output xlen_t       mtvec_o,
   output xlen_t       mepc_o,
+  output xlen_t       stvec_o,
+  output xlen_t       sepc_o,
+  output xlen_t       medeleg_o,
   output xlen_t       dpc_o,
   output logic        dcsr_step_o,
   output logic        dcsr_ebreakm_o,
@@ -73,31 +76,47 @@ module csr_file #(
 
   // Interrupt arbitration result
   output logic        interrupt_ready_o,
+  output logic        interrupt_to_s_o,
   output xlen_t       interrupt_cause_o,
 
   // Current privilege policy
   output privilege_mode_e privilege_mode_o,
+  output logic            mstatus_tsr_o,
   output logic            mstatus_tw_o,
   output logic            mstatus_mprv_o,
-  output privilege_mode_e mstatus_mpp_o
+  output privilege_mode_e mstatus_mpp_o,
+  output logic            mstatus_tvm_o,
+  output logic            mstatus_sum_o,
+  output logic            mstatus_mxr_o,
+  output xlen_t           satp_o
 );
 
   localparam int HPM_EVENT_INDEX_W = (HPM_EVENT_COUNT > 1) ? $clog2(HPM_EVENT_COUNT) : 1;
   localparam logic [7:0] HPM_EVENT_COUNT_U8 = HPM_EVENT_COUNT[7:0];
 
   // ---------------------------------------------------------------------------
-  // Architectural Machine and U-mode state
+  // Architectural M/S/U state
   // ---------------------------------------------------------------------------
   xlen_t       mstatus_q;
   logic [4:0]  fflags_q;
   logic [2:0]  frm_q;
   xlen_t       mie_q;
   xlen_t       mip_sw_q;
+  xlen_t       sip_sw_q;
+  xlen_t       medeleg_q;
+  xlen_t       mideleg_q;
   xlen_t       mtvec_q;
+  xlen_t       stvec_q;
+  xlen_t       scounteren_q;
   xlen_t       mscratch_q;
   xlen_t       mepc_q;
   xlen_t       mcause_q;
   xlen_t       mtval_q;
+  xlen_t       sscratch_q;
+  xlen_t       sepc_q;
+  xlen_t       scause_q;
+  xlen_t       stval_q;
+  xlen_t       satp_q;
   xlen_t       mcountinhibit_q;
   xlen_t       mcounteren_q;
   privilege_mode_e privilege_mode_q;
@@ -136,19 +155,32 @@ module csr_file #(
 
   // Combinational CSR views and access qualification
   xlen_t       mip_value;
+  xlen_t       sstatus_value;
+  xlen_t       sie_value;
+  xlen_t       sip_value;
   xlen_t       dcsr_value;
   xlen_t       csr_wvalue;
   logic        meip_pending;
   logic        msip_pending;
   logic        mtip_pending;
+  logic        seip_pending;
+  logic        ssip_pending;
+  logic        stip_pending;
+  logic        machine_interrupt_ready;
+  logic        supervisor_interrupt_ready;
   logic        csr_known;
   logic        csr_write_legal;
+  logic        csr_insufficient_privilege;
+  logic        csr_counter_access;
+  logic        csr_counter_access_required;
+  logic        csr_tvm_violation;
+  privilege_mode_e csr_min_privilege;
   logic [3:0]  hpm_counter_write;
+  logic        trap_delegated_to_s;
 
   // ---------------------------------------------------------------------------
   // CSR access state
   // ---------------------------------------------------------------------------
-  logic        csr_user_counter_access;
   logic        csr_unimplemented_user_hpm;
   xlen_t       csr_counteren_mask;
 
@@ -159,18 +191,20 @@ module csr_file #(
     xlen_t sanitized;
     begin
       sanitized = '0;
-      // Preserve all writable Machine-mode fields.  Extension state fields
-      // (VS/FS/XS) are stored as written even though this core does not
-      // implement the corresponding vector / FP / user-extension units;
-      // their values have no hardware side-effects and the ACT Sm profile
-      // expects them to be readable.
-      sanitized[1:0]   = value[1:0];
+      sanitized[1:0]   = value[1:0];     // SIE and reserved bit 0
       sanitized[3]     = value[3];       // MIE
-      sanitized[6:4]   = value[6:4];     // WPRI
+      sanitized[6:4]   = value[6:4];     // SPIE plus WPRI bits retained for compatibility
       sanitized[7]     = value[7];       // MPIE
-      sanitized[8]     = value[8];       // SPP / reserved
+      sanitized[8]     = value[8];       // SPP
       sanitized[10:9]  = value[10:9];    // VS
-      if (HAS_UMODE) begin
+      if (HAS_SMODE) begin
+        unique case (value[12:11])
+          PRIV_U,
+          PRIV_S,
+          PRIV_M: sanitized[12:11] = value[12:11];
+          default: sanitized[12:11] = PRIV_M;
+        endcase
+      end else if (HAS_UMODE) begin
         unique case (value[12:11])
           PRIV_U,
           PRIV_M: sanitized[12:11] = value[12:11];
@@ -182,13 +216,11 @@ module csr_file #(
       sanitized[14:13] = value[14:13];   // FS
       sanitized[16:15] = value[16:15];   // XS
       sanitized[22:18] = value[22:18];   // TSR,TW,TVM,MXR,SUM
-      sanitized[17]    = HAS_UMODE && HAS_MPRV && value[17]; // MPRV
-      // RV64 reports a 64-bit U-mode register width.  S-mode is not
-      // implemented, so SXL remains zero.
-      if (HAS_UMODE) begin
+      sanitized[17]    = HAS_MPRV && value[17]; // MPRV
+      if (HAS_UMODE)
         sanitized[33:32] = 2'b10;         // UXL = RV64
-      end
-      // SD is a read-only summary: (FS==3) || (XS==3) || (VS==3)
+      if (HAS_SMODE)
+        sanitized[35:34] = 2'b10;         // SXL = RV64
       sanitized[CORE_XLEN-1] = (sanitized[14:13] == 2'b11) ||
                                (sanitized[16:15] == 2'b11) ||
                                (sanitized[10:9]  == 2'b11);
@@ -204,12 +236,58 @@ module csr_file #(
     sanitize_mip = value & xlen_t'(32'h0000_0008);
   endfunction
 
+  function automatic xlen_t sanitize_sip(input xlen_t value);
+    sanitize_sip = value & xlen_t'(32'h0000_0002);
+  endfunction
+
+  function automatic xlen_t sanitize_medeleg(input xlen_t value);
+    sanitize_medeleg = value & xlen_t'(32'h0000_01ff);
+  endfunction
+
+  function automatic xlen_t sanitize_mideleg(input xlen_t value);
+    sanitize_mideleg = value & xlen_t'(32'h0000_0222);
+  endfunction
+
   function automatic xlen_t sanitize_mtvec(input xlen_t value);
     sanitize_mtvec = {value[CORE_XLEN-1:2], 1'b0, (value[1:0] == 2'b01)};
   endfunction
 
   function automatic xlen_t sanitize_mepc(input xlen_t value);
     sanitize_mepc = value & ~xlen_t'(1);
+  endfunction
+
+  function automatic xlen_t sanitize_satp(input xlen_t current,
+                                           input xlen_t value);
+    xlen_t sanitized;
+    begin
+      // Unsupported MODE writes leave the CSR unchanged, as required by satp.
+      unique case (value[63:60])
+        4'd0,
+        4'd8: begin
+          sanitized = value;
+          // AP uses a 48-bit physical address, so only PPN[35:0] is usable.
+          sanitized[43:36] = '0;
+        end
+        default: sanitized = current;
+      endcase
+      sanitize_satp = sanitized;
+    end
+  endfunction
+
+  function automatic xlen_t write_sstatus(input xlen_t mstatus,
+                                          input xlen_t value);
+    xlen_t merged;
+    begin
+      merged = mstatus;
+      merged[1] = value[1];
+      merged[5] = value[5];
+      merged[8] = value[8];
+      merged[10:9] = value[10:9];
+      merged[14:13] = value[14:13];
+      merged[16:15] = value[16:15];
+      merged[19:18] = value[19:18];
+      write_sstatus = sanitize_mstatus(merged);
+    end
   endfunction
 
   function automatic logic [7:0] sanitize_hpm_event(input xlen_t value);
@@ -268,34 +346,55 @@ module csr_file #(
     end
   end
 
-  // --- Interrupt pending and prioritisation ---
+  // --- Interrupt pending, delegation, and prioritisation ---
   //
-  // mip is the logical OR of hardware IRQ lines and software-writable mip bits.
-  //   irq_i[11] = MEI (Machine External Interrupt, from ACT MMIO)
-  //   irq_i[7]  = MTI (Machine Timer Interrupt, from ACT MMIO mtime>=mtimecmp)
-  //   irq_i[3]  = MSI (Machine Software Interrupt, from ACT MMIO MSIP)
-  //   mip_sw_q  = software-controlled mip (only MSIP writable via CSR)
-  //
-  // interrupt_ready_o = privilege-aware global enable & any pending
-  //
-  // Priority: MEI > MSI > MTI  (per RISC-V privileged spec)
-  assign mip_value = (xlen_t'(irq_i) & xlen_t'(32'h0000_0888)) |
-                     (mip_sw_q & xlen_t'(32'h0000_0008));
+  // Existing platform sources use machine positions 11/7/3. For the S-mode
+  // baseline they are also mirrored to SEIP/STIP/SSIP; a future CLINT/PLIC can
+  // instead drive the supervisor positions directly. M-level sources retain
+  // priority whenever both classes are enabled.
+  always_comb begin
+    mip_value = '0;
+    mip_value[11] = irq_i[11];
+    mip_value[9]  = irq_i[9];
+    mip_value[7]  = irq_i[7];
+    mip_value[5]  = irq_i[5] | irq_i[7];
+    mip_value[3]  = irq_i[3] | mip_sw_q[3];
+    mip_value[1]  = irq_i[1] | irq_i[3] | sip_sw_q[1];
+  end
   assign meip_pending = mip_value[11] & mie_q[11];
   assign msip_pending = mip_value[3] & mie_q[3];
   assign mtip_pending = mip_value[7] & mie_q[7];
-  assign interrupt_ready_o = ((privilege_mode_q != PRIV_M) || mstatus_q[3]) &&
-                             (meip_pending | msip_pending | mtip_pending);
+  assign seip_pending = mip_value[9] & mie_q[9] & mideleg_q[9];
+  assign ssip_pending = mip_value[1] & mie_q[1] & mideleg_q[1];
+  assign stip_pending = mip_value[5] & mie_q[5] & mideleg_q[5];
+
+  assign machine_interrupt_ready = ((privilege_mode_q != PRIV_M) || mstatus_q[3]) &&
+                                   (meip_pending | msip_pending | mtip_pending);
+  assign supervisor_interrupt_ready = (privilege_mode_q != PRIV_M) &&
+                                      ((privilege_mode_q == PRIV_U) || mstatus_q[1]) &&
+                                      (seip_pending | ssip_pending | stip_pending);
+  assign interrupt_ready_o = machine_interrupt_ready | supervisor_interrupt_ready;
+  assign interrupt_to_s_o = !machine_interrupt_ready && supervisor_interrupt_ready;
+  assign trap_delegated_to_s = (privilege_mode_q != PRIV_M) &&
+                               ((trap_cause_i[CORE_XLEN-1] &&
+                                 mideleg_q[trap_cause_i[5:0]]) ||
+                                (!trap_cause_i[CORE_XLEN-1] &&
+                                 medeleg_q[trap_cause_i[5:0]]));
 
   always_comb begin
-    if (meip_pending) begin
-      interrupt_cause_o = (xlen_t'(1) << (CORE_XLEN-1)) | xlen_t'(11);  // MEI
-    end else if (msip_pending) begin
-      interrupt_cause_o = (xlen_t'(1) << (CORE_XLEN-1)) | xlen_t'(3);   // MSI
-    end else if (mtip_pending) begin
-      interrupt_cause_o = (xlen_t'(1) << (CORE_XLEN-1)) | xlen_t'(7);   // MTI
+    if (machine_interrupt_ready) begin
+      if (meip_pending)
+        interrupt_cause_o = (xlen_t'(1) << (CORE_XLEN-1)) | xlen_t'(11);
+      else if (msip_pending)
+        interrupt_cause_o = (xlen_t'(1) << (CORE_XLEN-1)) | xlen_t'(3);
+      else
+        interrupt_cause_o = (xlen_t'(1) << (CORE_XLEN-1)) | xlen_t'(7);
+    end else if (seip_pending) begin
+      interrupt_cause_o = (xlen_t'(1) << (CORE_XLEN-1)) | xlen_t'(9);
+    end else if (ssip_pending) begin
+      interrupt_cause_o = (xlen_t'(1) << (CORE_XLEN-1)) | xlen_t'(1);
     end else begin
-      interrupt_cause_o = (xlen_t'(1) << (CORE_XLEN-1)) | xlen_t'(11);  // default: MEI
+      interrupt_cause_o = (xlen_t'(1) << (CORE_XLEN-1)) | xlen_t'(5);
     end
   end
 
@@ -309,14 +408,17 @@ module csr_file #(
     csr_known = 1'b1;
     csr_write_legal = 1'b1;
     csr_counteren_mask = counteren_mask_for_csr(csr_addr_i);
-    csr_user_counter_access = HAS_UMODE && HAS_MCOUNTEREN &&
-                              (privilege_mode_q == PRIV_U) &&
-                              ((mcounteren_q & csr_counteren_mask) != '0) &&
-                              !csr_write_intent_i;
-    // The product implements only HPM3..6. Keep the remaining standard user
-    // counter CSR aliases readable as zero in M-mode; they are read-only.
-    // U-mode remains gated by the corresponding (unimplemented) mcounteren
-    // bits below.
+    csr_min_privilege = privilege_mode_e'(csr_addr_i[9:8]);
+    csr_insufficient_privilege = privilege_mode_q < csr_min_privilege;
+    csr_counter_access_required = (csr_counteren_mask != '0) ||
+                                  csr_unimplemented_user_hpm;
+    csr_tvm_violation = (csr_addr_i == CSR_SATP) &&
+                        (privilege_mode_q == PRIV_S) && mstatus_q[20];
+    csr_counter_access = (privilege_mode_q == PRIV_M) ||
+                         (HAS_MCOUNTEREN && ((mcounteren_q & csr_counteren_mask) != '0) &&
+                          ((privilege_mode_q == PRIV_S) ||
+                           ((privilege_mode_q == PRIV_U) &&
+                            ((scounteren_q & csr_counteren_mask) != '0))));
     if (csr_unimplemented_user_hpm) begin
       csr_write_legal = !csr_write_intent_i;
     end else begin
@@ -324,6 +426,16 @@ module csr_file #(
         CSR_FFLAGS,
         CSR_FRM,
         CSR_FCSR,
+        CSR_SSTATUS,
+        CSR_SIE,
+        CSR_STVEC,
+        CSR_SCOUNTEREN,
+        CSR_SSCRATCH,
+        CSR_SEPC,
+        CSR_SCAUSE,
+        CSR_STVAL,
+        CSR_SIP,
+        CSR_SATP,
         CSR_MSTATUS,
         CSR_MIE,
         CSR_MTVEC,
@@ -334,6 +446,8 @@ module csr_file #(
         CSR_MIP,
         CSR_MCOUNTINHIBIT,
         CSR_MCOUNTEREN,
+        CSR_MEDELEG,
+        CSR_MIDELEG,
         CSR_MCYCLE,
         CSR_MINSTRET,
         CSR_MHPMCOUNTER3,
@@ -344,7 +458,6 @@ module csr_file #(
         CSR_MHPMEVENT4,
         CSR_MHPMEVENT5,
         CSR_MHPMEVENT6: begin
-          // Writable Machine CSRs need no additional access restriction.
         end
         CSR_MISA,
         CSR_CYCLE,
@@ -364,7 +477,6 @@ module csr_file #(
         CSR_TSELECT,
         CSR_TDATA1,
         CSR_TDATA2: begin
-          // Debug and trigger CSRs are writable through the instruction path.
         end
         default: begin
           csr_known = 1'b0;
@@ -379,15 +491,29 @@ module csr_file #(
   end
 
   assign csr_illegal_access_o = csr_access_i &&
-                                (!csr_known || !csr_write_legal ||
-                                 ((privilege_mode_q != PRIV_M) && !csr_user_counter_access &&
-                                  (csr_addr_i != CSR_FFLAGS) &&
-                                  (csr_addr_i != CSR_FRM) &&
-                                  (csr_addr_i != CSR_FCSR)));
+                                (!csr_known || !csr_write_legal || csr_tvm_violation ||
+                                 (csr_counter_access_required && !csr_counter_access) ||
+                                 (!csr_counter_access_required && csr_insufficient_privilege));
 
   // ---------------------------------------------------------------------------
   // Architectural CSR read data and instruction write value
   // ---------------------------------------------------------------------------
+  always_comb begin
+    sstatus_value = '0;
+    sstatus_value[CORE_XLEN-1] = mstatus_q[CORE_XLEN-1];
+    if (HAS_UMODE)
+      sstatus_value[33:32] = mstatus_q[33:32];
+    sstatus_value[19:18] = mstatus_q[19:18];
+    sstatus_value[16:15] = mstatus_q[16:15];
+    sstatus_value[14:13] = mstatus_q[14:13];
+    sstatus_value[10:9] = mstatus_q[10:9];
+    sstatus_value[8] = mstatus_q[8];
+    sstatus_value[5] = mstatus_q[5];
+    sstatus_value[1] = mstatus_q[1];
+    sie_value = mie_q & mideleg_q;
+    sip_value = mip_value & mideleg_q;
+  end
+
   always_comb begin
     dcsr_value = '0;
     dcsr_value[31:28] = 4'h4;
@@ -407,13 +533,24 @@ module csr_file #(
       CSR_FFLAGS:       csr_rdata_o = xlen_t'(fflags_q);
       CSR_FRM:          csr_rdata_o = xlen_t'(frm_q);
       CSR_FCSR:         csr_rdata_o = xlen_t'({frm_q, fflags_q});
+      CSR_SSTATUS:      csr_rdata_o = sstatus_value;
+      CSR_SIE:          csr_rdata_o = sie_value;
+      CSR_STVEC:        csr_rdata_o = stvec_q;
+      CSR_SCOUNTEREN:   csr_rdata_o = scounteren_q;
+      CSR_SSCRATCH:     csr_rdata_o = sscratch_q;
+      CSR_SEPC:         csr_rdata_o = sepc_q;
+      CSR_SCAUSE:       csr_rdata_o = scause_q;
+      CSR_STVAL:        csr_rdata_o = stval_q;
+      CSR_SIP:          csr_rdata_o = sip_value;
+      CSR_SATP:         csr_rdata_o = satp_q;
       CSR_MSTATUS:      csr_rdata_o = mstatus_q;
       CSR_MISA:         csr_rdata_o = (xlen_t'(2) << (CORE_XLEN-2)) |
-                                      xlen_t'(32'h0000_1104) |
+                                      xlen_t'(32'h0000_1105) |
                                       (HAS_B_EXT ? xlen_t'(32'h0000_0002) : '0) |
                                       (HAS_D_EXT ? xlen_t'(32'h0000_0008) : '0) |
-                                      (HAS_UMODE ? xlen_t'(32'h0010_0000) : '0) |
-                                      (HAS_F_EXT ? xlen_t'(32'h0000_0020) : '0);
+                                      (HAS_F_EXT ? xlen_t'(32'h0000_0020) : '0) |
+                                      (HAS_SMODE ? xlen_t'(32'h0004_0000) : '0) |
+                                      (HAS_UMODE ? xlen_t'(32'h0010_0000) : '0);
       CSR_MIE:          csr_rdata_o = mie_q;
       CSR_MTVEC:        csr_rdata_o = mtvec_q;
       CSR_MSCRATCH:     csr_rdata_o = mscratch_q;
@@ -421,6 +558,8 @@ module csr_file #(
       CSR_MCAUSE:       csr_rdata_o = mcause_q;
       CSR_MTVAL:        csr_rdata_o = mtval_q;
       CSR_MIP:          csr_rdata_o = mip_value;
+      CSR_MEDELEG:      csr_rdata_o = medeleg_q;
+      CSR_MIDELEG:      csr_rdata_o = mideleg_q;
       CSR_MCOUNTINHIBIT: csr_rdata_o = mcountinhibit_q;
       CSR_MCOUNTEREN:    csr_rdata_o = HAS_MCOUNTEREN ? mcounteren_q : '0;
       CSR_MHARTID:      csr_rdata_o = '0;
@@ -482,7 +621,7 @@ module csr_file #(
 
   // ---------------------------------------------------------------------------
   // Sequential CSR state
-  // Priority: Debug entry, Debug abstract write, trap entry, trap return,
+  // Priority: Debug entry, Debug abstract write, trap entry, MRET, SRET,
   // then an architecturally legal instruction CSR access.
   // ---------------------------------------------------------------------------
   always_ff @(posedge clk or negedge rst_n) begin
@@ -493,11 +632,21 @@ module csr_file #(
       privilege_mode_q <= PRIV_M;
       mie_q          <= '0;
       mip_sw_q       <= '0;
+      sip_sw_q       <= '0;
+      medeleg_q      <= '0;
+      mideleg_q      <= '0;
       mtvec_q        <= RESET_VECTOR_ADDR_P;
+      stvec_q        <= '0;
+      scounteren_q   <= '0;
       mscratch_q     <= '0;
       mepc_q         <= '0;
       mcause_q       <= '0;
       mtval_q        <= '0;
+      sscratch_q     <= '0;
+      sepc_q         <= '0;
+      scause_q       <= '0;
+      stval_q        <= '0;
+      satp_q         <= '0;
       mcountinhibit_q <= '0;
       mcounteren_q    <= '0;
       mcycle_q       <= '0;
@@ -590,21 +739,38 @@ module csr_file #(
           end
         endcase
       end else if (trap_enter_i) begin
-        mepc_q         <= sanitize_mepc(trap_pc_i);
-        mcause_q       <= trap_cause_i;
-        mtval_q        <= trap_value_i;
-        mstatus_q[7]   <= mstatus_q[3];
-        mstatus_q[3]   <= 1'b0;
-        mstatus_q[12:11] <= privilege_mode_q;
-        privilege_mode_q <= PRIV_M;
+        if (trap_delegated_to_s) begin
+          sepc_q          <= sanitize_mepc(trap_pc_i);
+          scause_q        <= trap_cause_i;
+          stval_q         <= trap_value_i;
+          mstatus_q[5]    <= mstatus_q[1];
+          mstatus_q[1]    <= 1'b0;
+          mstatus_q[8]    <= (privilege_mode_q == PRIV_S);
+          privilege_mode_q <= PRIV_S;
+        end else begin
+          mepc_q          <= sanitize_mepc(trap_pc_i);
+          mcause_q        <= trap_cause_i;
+          mtval_q         <= trap_value_i;
+          mstatus_q[7]    <= mstatus_q[3];
+          mstatus_q[3]    <= 1'b0;
+          mstatus_q[12:11] <= privilege_mode_q;
+          privilege_mode_q <= PRIV_M;
+        end
       end else if (trap_return_i) begin
         mstatus_q[3]    <= mstatus_q[7];
         mstatus_q[7]    <= 1'b1;
-        privilege_mode_q <= HAS_UMODE ? privilege_mode_e'(mstatus_q[12:11]) : PRIV_M;
+        privilege_mode_q <= (mstatus_q[12:11] == PRIV_M) ? PRIV_M :
+                            ((HAS_SMODE && (mstatus_q[12:11] == PRIV_S)) ? PRIV_S : PRIV_U);
         mstatus_q[12:11] <= HAS_UMODE ? PRIV_U : PRIV_M;
         if (mstatus_q[12:11] != PRIV_M) begin
           mstatus_q[17] <= 1'b0;
         end
+      end else if (trap_sret_i) begin
+        mstatus_q[1]     <= mstatus_q[5];
+        mstatus_q[5]     <= 1'b1;
+        privilege_mode_q <= (HAS_UMODE && !mstatus_q[8]) ? PRIV_U : PRIV_S;
+        mstatus_q[8]     <= 1'b0;
+        mstatus_q[17]    <= 1'b0;
       end else if (csr_access_i && !csr_illegal_access_o) begin
         unique case (csr_addr_i)
           CSR_FFLAGS:      fflags_q <= csr_wvalue[4:0];
@@ -613,6 +779,17 @@ module csr_file #(
             fflags_q <= csr_wvalue[4:0];
             frm_q    <= csr_wvalue[7:5];
           end
+          CSR_SSTATUS:      mstatus_q <= write_sstatus(mstatus_q, csr_wvalue);
+          CSR_SIE:          mie_q <= (mie_q & ~mideleg_q) |
+                                      (sanitize_mie(csr_wvalue) & mideleg_q);
+          CSR_STVEC:        stvec_q <= sanitize_mtvec(csr_wvalue);
+          CSR_SCOUNTEREN:   scounteren_q <= csr_wvalue & xlen_t'(MCOUNTEREN_WRITABLE_MASK);
+          CSR_SSCRATCH:     sscratch_q <= csr_wvalue;
+          CSR_SEPC:         sepc_q <= sanitize_mepc(csr_wvalue);
+          CSR_SCAUSE:       scause_q <= csr_wvalue;
+          CSR_STVAL:        stval_q <= csr_wvalue;
+          CSR_SIP:          sip_sw_q <= sanitize_sip(csr_wvalue & mideleg_q);
+          CSR_SATP:         satp_q <= sanitize_satp(satp_q, csr_wvalue);
           CSR_MSTATUS:      mstatus_q      <= sanitize_mstatus(csr_wvalue);
           CSR_MIE:          mie_q          <= sanitize_mie(csr_wvalue);
           CSR_MTVEC:        mtvec_q        <= sanitize_mtvec(csr_wvalue);
@@ -621,6 +798,8 @@ module csr_file #(
           CSR_MCAUSE:       mcause_q       <= csr_wvalue;
           CSR_MTVAL:        mtval_q        <= csr_wvalue;
           CSR_MIP:          mip_sw_q       <= sanitize_mip(csr_wvalue);
+          CSR_MEDELEG:      medeleg_q      <= sanitize_medeleg(csr_wvalue);
+          CSR_MIDELEG:      mideleg_q      <= sanitize_mideleg(csr_wvalue);
           CSR_MCOUNTINHIBIT: mcountinhibit_q <= csr_wvalue & xlen_t'(32'h0000_007d);
           CSR_MCOUNTEREN:    mcounteren_q <= HAS_MCOUNTEREN ?
                                                (csr_wvalue & xlen_t'(MCOUNTEREN_WRITABLE_MASK)) :
@@ -665,6 +844,9 @@ module csr_file #(
   // ---------------------------------------------------------------------------
   assign mtvec_o          = mtvec_q;
   assign mepc_o           = mepc_q;
+  assign stvec_o          = stvec_q;
+  assign sepc_o           = sepc_q;
+  assign medeleg_o        = medeleg_q;
   assign dpc_o            = dpc_q;
   assign dcsr_step_o      = dcsr_step_q;
   assign dcsr_ebreakm_o   = dcsr_ebreakm_q;
@@ -673,9 +855,14 @@ module csr_file #(
   assign trigger_tdata2_o  = mcontrol_tdata2_q;
   assign trigger_icount_o  = icount_q;
   assign privilege_mode_o  = privilege_mode_q;
+  assign mstatus_tsr_o     = mstatus_q[22];
   assign mstatus_tw_o      = mstatus_q[21];
-  assign mstatus_mprv_o    = HAS_UMODE && HAS_MPRV && mstatus_q[17];
+  assign mstatus_mprv_o    = HAS_MPRV && mstatus_q[17];
   assign mstatus_mpp_o     = privilege_mode_e'(mstatus_q[12:11]);
+  assign mstatus_tvm_o     = mstatus_q[20];
+  assign mstatus_sum_o     = mstatus_q[18];
+  assign mstatus_mxr_o     = mstatus_q[19];
+  assign satp_o            = satp_q;
   assign frm_o             = frm_q;
   assign fs_off_o          = (mstatus_q[14:13] == 2'b00);
 

@@ -13,9 +13,9 @@ The implemented topology has two independent AXI planes:
   will terminate at the AXI-to-APB/device hierarchy.
 
 `cache_axi4_line_adapter.sv` maps a blocking 64-byte cache-line operation to an
-eight-beat 64-bit AXI4 burst. `cache_axi4_axi_bus_master.sv` and
-`ap_axi64_egress_bridge.sv` only adapt project-owned flattened links to PULP
-`AXI_BUS` interfaces.
+eight-beat 64-bit AXI4 burst; it and `ap_uncached_axi_master.sv` expose native
+PULP `AXI_BUS` manager ports. `ap_axi64_egress_bridge.sv` is an `AXI_BUS` to
+`AXI_BUS` subsystem-egress relay with no protocol conversion.
 
 No shared cache/MMIO mux remains in the AP SoC. Future L2/coherence wrappers
 belong under `ap_memory_system`; AXI-to-APB and device adapters belong under

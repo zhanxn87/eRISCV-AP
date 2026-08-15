@@ -20,41 +20,7 @@ module ap_uncached_axi_master
   output logic [63:0]                  cpu_rdata_o,
   output logic                         cpu_err_o,
 
-  output logic [AP_AXI_SLV_ID_W-1:0]   m_axi_awid_o,
-  output logic [AP_PADDR_W-1:0]        m_axi_awaddr_o,
-  output logic [7:0]                   m_axi_awlen_o,
-  output logic [2:0]                   m_axi_awsize_o,
-  output logic [1:0]                   m_axi_awburst_o,
-  output logic [3:0]                   m_axi_awcache_o,
-  output logic                         m_axi_awvalid_o,
-  input  logic                         m_axi_awready_i,
-
-  output logic [63:0]                  m_axi_wdata_o,
-  output logic [7:0]                   m_axi_wstrb_o,
-  output logic                         m_axi_wlast_o,
-  output logic                         m_axi_wvalid_o,
-  input  logic                         m_axi_wready_i,
-
-  input  logic [AP_AXI_SLV_ID_W-1:0]   m_axi_bid_i,
-  input  logic [1:0]                   m_axi_bresp_i,
-  input  logic                         m_axi_bvalid_i,
-  output logic                         m_axi_bready_o,
-
-  output logic [AP_AXI_SLV_ID_W-1:0]   m_axi_arid_o,
-  output logic [AP_PADDR_W-1:0]        m_axi_araddr_o,
-  output logic [7:0]                   m_axi_arlen_o,
-  output logic [2:0]                   m_axi_arsize_o,
-  output logic [1:0]                   m_axi_arburst_o,
-  output logic [3:0]                   m_axi_arcache_o,
-  output logic                         m_axi_arvalid_o,
-  input  logic                         m_axi_arready_i,
-
-  input  logic [AP_AXI_SLV_ID_W-1:0]   m_axi_rid_i,
-  input  logic [63:0]                  m_axi_rdata_i,
-  input  logic [1:0]                   m_axi_rresp_i,
-  input  logic                         m_axi_rlast_i,
-  input  logic                         m_axi_rvalid_i,
-  output logic                         m_axi_rready_o
+  AXI_BUS.Master m_axi_o
 );
 
   localparam logic [1:0] AXI_BURST_INCR = 2'b01;
@@ -72,28 +38,40 @@ module ap_uncached_axi_master
   logic err_q;
 
   always_comb begin
-    m_axi_awid_o = AXI_ID_P;
-    m_axi_awaddr_o = {addr_q[AP_PADDR_W-1:3], 3'b000};
-    m_axi_awlen_o = 8'd0;
-    m_axi_awsize_o = 3'd3;
-    m_axi_awburst_o = AXI_BURST_INCR;
-    m_axi_awcache_o = 4'b0000;
-    m_axi_awvalid_o = state_q == UC_WRITE_ADDR;
+    m_axi_o.aw_id = AXI_ID_P;
+    m_axi_o.aw_addr = {addr_q[AP_PADDR_W-1:3], 3'b000};
+    m_axi_o.aw_len = 8'd0;
+    m_axi_o.aw_size = 3'd3;
+    m_axi_o.aw_burst = AXI_BURST_INCR;
+    m_axi_o.aw_lock = 1'b0;
+    m_axi_o.aw_cache = 4'b0000;
+    m_axi_o.aw_prot = '0;
+    m_axi_o.aw_qos = '0;
+    m_axi_o.aw_region = '0;
+    m_axi_o.aw_atop = '0;
+    m_axi_o.aw_user = '0;
+    m_axi_o.aw_valid = state_q == UC_WRITE_ADDR;
 
-    m_axi_wdata_o = wdata_q;
-    m_axi_wstrb_o = be_q;
-    m_axi_wlast_o = 1'b1;
-    m_axi_wvalid_o = state_q == UC_WRITE_DATA;
-    m_axi_bready_o = state_q == UC_WRITE_RESP;
+    m_axi_o.w_data = wdata_q;
+    m_axi_o.w_strb = be_q;
+    m_axi_o.w_last = 1'b1;
+    m_axi_o.w_user = '0;
+    m_axi_o.w_valid = state_q == UC_WRITE_DATA;
+    m_axi_o.b_ready = state_q == UC_WRITE_RESP;
 
-    m_axi_arid_o = AXI_ID_P;
-    m_axi_araddr_o = {addr_q[AP_PADDR_W-1:3], 3'b000};
-    m_axi_arlen_o = 8'd0;
-    m_axi_arsize_o = 3'd3;
-    m_axi_arburst_o = AXI_BURST_INCR;
-    m_axi_arcache_o = 4'b0000;
-    m_axi_arvalid_o = state_q == UC_READ_ADDR;
-    m_axi_rready_o = state_q == UC_READ_DATA;
+    m_axi_o.ar_id = AXI_ID_P;
+    m_axi_o.ar_addr = {addr_q[AP_PADDR_W-1:3], 3'b000};
+    m_axi_o.ar_len = 8'd0;
+    m_axi_o.ar_size = 3'd3;
+    m_axi_o.ar_burst = AXI_BURST_INCR;
+    m_axi_o.ar_lock = 1'b0;
+    m_axi_o.ar_cache = 4'b0000;
+    m_axi_o.ar_prot = '0;
+    m_axi_o.ar_qos = '0;
+    m_axi_o.ar_region = '0;
+    m_axi_o.ar_user = '0;
+    m_axi_o.ar_valid = state_q == UC_READ_ADDR;
+    m_axi_o.r_ready = state_q == UC_READ_DATA;
 
     cpu_resp_valid_o = state_q == UC_RESP;
     cpu_rdata_o = rdata_q;
@@ -120,25 +98,25 @@ module ap_uncached_axi_master
           end
         end
         UC_WRITE_ADDR:
-          if (m_axi_awready_i)
+          if (m_axi_o.aw_ready)
             state_q <= UC_WRITE_DATA;
         UC_WRITE_DATA:
-          if (m_axi_wready_i)
+          if (m_axi_o.w_ready)
             state_q <= UC_WRITE_RESP;
         UC_WRITE_RESP: begin
-          if (m_axi_bvalid_i) begin
-            err_q <= (m_axi_bid_i != AXI_ID_P) || (m_axi_bresp_i != AXI_RESP_OKAY);
+          if (m_axi_o.b_valid) begin
+            err_q <= (m_axi_o.b_id != AXI_ID_P) || (m_axi_o.b_resp != AXI_RESP_OKAY);
             state_q <= UC_RESP;
           end
         end
         UC_READ_ADDR:
-          if (m_axi_arready_i)
+          if (m_axi_o.ar_ready)
             state_q <= UC_READ_DATA;
         UC_READ_DATA: begin
-          if (m_axi_rvalid_i) begin
-            rdata_q <= m_axi_rdata_i;
-            err_q <= (m_axi_rid_i != AXI_ID_P) ||
-                     (m_axi_rresp_i != AXI_RESP_OKAY) || !m_axi_rlast_i;
+          if (m_axi_o.r_valid) begin
+            rdata_q <= m_axi_o.r_data;
+            err_q <= (m_axi_o.r_id != AXI_ID_P) ||
+                     (m_axi_o.r_resp != AXI_RESP_OKAY) || !m_axi_o.r_last;
             state_q <= UC_RESP;
           end
         end

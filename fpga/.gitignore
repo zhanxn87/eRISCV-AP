@@ -6,3 +6,8 @@ vcu108/*.log
 vcu108/*.str
 vcu108/*.pb
 vcu108/*.backup.*
+
+# VCU108 MIG generated products; retain only the source XCI and its README.
+vcu108/ip/mig_ddr4_0/.Xil/
+vcu108/ip/mig_ddr4_0/mig_ddr4_0/*
+!vcu108/ip/mig_ddr4_0/mig_ddr4_0/mig_ddr4_0.xci

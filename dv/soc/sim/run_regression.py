@@ -36,12 +36,6 @@ SOC_TESTS = {
         "expected_bus_errors": 1,
     },
     "MCU-STORE-FAST-01": {"phase": "soc", "max_cycles": 220, "boot_addr": BOOT_ADDR},
-    "MCU-LMEM-LOAD-BRANCH-01": {
-        "phase": "soc", "max_cycles": 220, "boot_addr": BOOT_ADDR,
-    },
-    "MCU-LMEM-LOAD-STORE-DATA-01": {
-        "phase": "soc", "max_cycles": 360, "boot_addr": BOOT_ADDR,
-    },
     "MCU-LOAD-RESPONSE-BYPASS-01": {
         "phase": "soc", "max_cycles": 420, "boot_addr": BOOT_ADDR,
     },

@@ -26,9 +26,13 @@ module wb_stage (
   output logic        control_commit_o,
   output logic        control_trap_enter_o,
   output logic        control_trap_return_o,
+  output logic        control_sret_return_o,
   output logic        control_debug_enter_o,
   output logic        control_debug_return_o,
   output logic        control_wfi_o,
+  output logic        control_sfence_vma_o,
+  output xlen_t       control_sfence_vma_vaddr_o,
+  output logic [15:0] control_sfence_vma_asid_o,
   output xlen_t       control_trap_pc_o,
   output xlen_t       control_trap_cause_o,
   output xlen_t       control_trap_value_o,
@@ -51,6 +55,8 @@ module wb_stage (
                                   (mem_wb_i.control_source == CONTROL_EXCEPTION);
   assign control_trap_return_o  = mem_wb_i.valid &&
                                   (mem_wb_i.control_source == CONTROL_MRET);
+  assign control_sret_return_o  = mem_wb_i.valid &&
+                                  (mem_wb_i.control_source == CONTROL_SRET);
   assign control_debug_enter_o  = mem_wb_i.valid &&
                                   ((mem_wb_i.control_source == CONTROL_DEBUG_ENTER) ||
                                    (mem_wb_i.control_source == CONTROL_DEBUG_STEP));
@@ -58,6 +64,10 @@ module wb_stage (
                                   (mem_wb_i.control_source == CONTROL_DRET);
   assign control_wfi_o          = mem_wb_i.valid &&
                                   (mem_wb_i.control_source == CONTROL_WFI);
+  assign control_sfence_vma_o   = mem_wb_i.valid &&
+                                  (mem_wb_i.control_source == CONTROL_SFENCE_VMA);
+  assign control_sfence_vma_vaddr_o = mem_wb_i.control_sfence_vma_vaddr;
+  assign control_sfence_vma_asid_o = mem_wb_i.control_sfence_vma_asid;
   assign control_trap_pc_o      = mem_wb_i.control_trap_pc;
   assign control_trap_cause_o   = mem_wb_i.control_trap_cause;
   assign control_trap_value_o   = mem_wb_i.control_trap_value;

@@ -25,37 +25,12 @@ module cache_axi4_line_adapter_tb;
   logic [LINE_BITS-1:0] line_rdata;
   logic line_err;
 
-  logic [AXI_ID_W-1:0] axi_awid;
-  logic [PADDR_W-1:0] axi_awaddr;
-  logic [7:0] axi_awlen;
-  logic [2:0] axi_awsize;
-  logic [1:0] axi_awburst;
-  logic [3:0] axi_awcache;
-  logic axi_awvalid;
-  logic axi_awready;
-  logic [AXI_DATA_W-1:0] axi_wdata;
-  logic [AXI_DATA_W/8-1:0] axi_wstrb;
-  logic axi_wlast;
-  logic axi_wvalid;
-  logic axi_wready;
-  logic [AXI_ID_W-1:0] axi_bid;
-  logic [1:0] axi_bresp;
-  logic axi_bvalid;
-  logic axi_bready;
-  logic [AXI_ID_W-1:0] axi_arid;
-  logic [PADDR_W-1:0] axi_araddr;
-  logic [7:0] axi_arlen;
-  logic [2:0] axi_arsize;
-  logic [1:0] axi_arburst;
-  logic [3:0] axi_arcache;
-  logic axi_arvalid;
-  logic axi_arready;
-  logic [AXI_ID_W-1:0] axi_rid;
-  logic [AXI_DATA_W-1:0] axi_rdata;
-  logic [1:0] axi_rresp;
-  logic axi_rlast;
-  logic axi_rvalid;
-  logic axi_rready;
+  AXI_BUS #(
+    .AXI_ADDR_WIDTH(PADDR_W),
+    .AXI_DATA_WIDTH(AXI_DATA_W),
+    .AXI_ID_WIDTH(AXI_ID_W),
+    .AXI_USER_WIDTH(1)
+  ) axi ();
 
   logic [63:0] ram [0:255];
   logic read_active_q;
@@ -83,26 +58,16 @@ module cache_axi4_line_adapter_tb;
     .AXI_ID_W_P(AXI_ID_W),
     .LINE_BYTES_P(LINE_BYTES)
   ) dut (
-    .clk(clk), .rst_n(rst_n),
-    .line_req_i(line_req), .line_we_i(line_we), .line_addr_i(line_addr),
-    .line_wdata_i(line_wdata), .line_resp_valid_o(line_resp_valid),
-    .line_rdata_o(line_rdata), .line_err_o(line_err),
-    .m_axi_awid_o(axi_awid), .m_axi_awaddr_o(axi_awaddr),
-    .m_axi_awlen_o(axi_awlen), .m_axi_awsize_o(axi_awsize),
-    .m_axi_awburst_o(axi_awburst), .m_axi_awcache_o(axi_awcache),
-    .m_axi_awvalid_o(axi_awvalid), .m_axi_awready_i(axi_awready),
-    .m_axi_wdata_o(axi_wdata), .m_axi_wstrb_o(axi_wstrb),
-    .m_axi_wlast_o(axi_wlast), .m_axi_wvalid_o(axi_wvalid),
-    .m_axi_wready_i(axi_wready),
-    .m_axi_bid_i(axi_bid), .m_axi_bresp_i(axi_bresp),
-    .m_axi_bvalid_i(axi_bvalid), .m_axi_bready_o(axi_bready),
-    .m_axi_arid_o(axi_arid), .m_axi_araddr_o(axi_araddr),
-    .m_axi_arlen_o(axi_arlen), .m_axi_arsize_o(axi_arsize),
-    .m_axi_arburst_o(axi_arburst), .m_axi_arcache_o(axi_arcache),
-    .m_axi_arvalid_o(axi_arvalid), .m_axi_arready_i(axi_arready),
-    .m_axi_rid_i(axi_rid), .m_axi_rdata_i(axi_rdata),
-    .m_axi_rresp_i(axi_rresp), .m_axi_rlast_i(axi_rlast),
-    .m_axi_rvalid_i(axi_rvalid), .m_axi_rready_o(axi_rready)
+    .clk(clk),
+    .rst_n(rst_n),
+    .line_req_i(line_req),
+    .line_we_i(line_we),
+    .line_addr_i(line_addr),
+    .line_wdata_i(line_wdata),
+    .line_resp_valid_o(line_resp_valid),
+    .line_rdata_o(line_rdata),
+    .line_err_o(line_err),
+    .m_axi_o(axi)
   );
 
   initial clk = 1'b0;
@@ -149,17 +114,19 @@ module cache_axi4_line_adapter_tb;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      axi_arready <= 1'b0;
-      axi_awready <= 1'b0;
-      axi_wready <= 1'b0;
-      axi_rid <= '0;
-      axi_rdata <= '0;
-      axi_rresp <= 2'b00;
-      axi_rlast <= 1'b0;
-      axi_rvalid <= 1'b0;
-      axi_bid <= '0;
-      axi_bresp <= 2'b00;
-      axi_bvalid <= 1'b0;
+      axi.ar_ready <= 1'b0;
+      axi.aw_ready <= 1'b0;
+      axi.w_ready <= 1'b0;
+      axi.r_id <= '0;
+      axi.r_data <= '0;
+      axi.r_resp <= 2'b00;
+      axi.r_last <= 1'b0;
+      axi.r_user <= '0;
+      axi.r_valid <= 1'b0;
+      axi.b_id <= '0;
+      axi.b_resp <= 2'b00;
+      axi.b_user <= '0;
+      axi.b_valid <= 1'b0;
       read_active_q <= 1'b0;
       read_addr_q <= '0;
       read_beat_q <= '0;
@@ -178,61 +145,61 @@ module cache_axi4_line_adapter_tb;
     end else begin
       cycle_q <= cycle_q + 1'b1;
       // Deterministic independent backpressure on all request channels.
-      axi_arready <= cycle_q[0];
-      axi_awready <= cycle_q[1];
-      axi_wready <= cycle_q[0] | cycle_q[1];
+      axi.ar_ready <= cycle_q[0];
+      axi.aw_ready <= cycle_q[1];
+      axi.w_ready <= cycle_q[0] | cycle_q[1];
 
-      if (axi_arvalid && axi_arready) begin
+      if (axi.ar_valid && axi.ar_ready) begin
         ar_count <= ar_count + 1;
-        check(axi_arid == '0 && axi_arlen == 8'd7 && axi_arsize == 3'd3 &&
-              axi_arburst == 2'b01 && axi_arcache == 4'b1111 &&
-              axi_araddr[5:0] == '0, "invalid AXI read burst attributes");
+        check(axi.ar_id == '0 && axi.ar_len == 8'd7 && axi.ar_size == 3'd3 &&
+              axi.ar_burst == 2'b01 && axi.ar_cache == 4'b1111 &&
+              axi.ar_addr[5:0] == '0, "invalid AXI read burst attributes");
         read_active_q <= 1'b1;
-        read_addr_q <= axi_araddr;
+        read_addr_q <= axi.ar_addr;
         read_beat_q <= '0;
         read_delay_q <= 2'd2;
       end
 
-      if (axi_rvalid && axi_rready) begin
+      if (axi.r_valid && axi.r_ready) begin
         r_count <= r_count + 1;
-        axi_rvalid <= 1'b0;
-        if (axi_rlast)
+        axi.r_valid <= 1'b0;
+        if (axi.r_last)
           read_active_q <= 1'b0;
         else begin
           read_beat_q <= read_beat_q + 1'b1;
           read_delay_q <= 2'd1;
         end
-      end else if (!axi_rvalid && read_active_q) begin
+      end else if (!axi.r_valid && read_active_q) begin
         if (read_delay_q != 0) begin
           read_delay_q <= read_delay_q - 1'b1;
         end else begin
-          axi_rvalid <= 1'b1;
-          axi_rid <= '0;
-          axi_rdata <= ram[read_addr_q[10:3] + 8'(read_beat_q)];
-          axi_rresp <= (read_addr_q == ERR_READ_ADDR && read_beat_q == 4'd3) ? 2'b10 : 2'b00;
-          axi_rlast <= read_beat_q == 4'd7;
+          axi.r_valid <= 1'b1;
+          axi.r_id <= '0;
+          axi.r_data <= ram[read_addr_q[10:3] + 8'(read_beat_q)];
+          axi.r_resp <= (read_addr_q == ERR_READ_ADDR && read_beat_q == 4'd3) ? 2'b10 : 2'b00;
+          axi.r_last <= read_beat_q == 4'd7;
         end
       end
 
-      if (axi_awvalid && axi_awready) begin
+      if (axi.aw_valid && axi.aw_ready) begin
         aw_count <= aw_count + 1;
-        check(axi_awid == '0 && axi_awlen == 8'd7 && axi_awsize == 3'd3 &&
-              axi_awburst == 2'b01 && axi_awcache == 4'b1111 &&
-              axi_awaddr[5:0] == '0, "invalid AXI write burst attributes");
+        check(axi.aw_id == '0 && axi.aw_len == 8'd7 && axi.aw_size == 3'd3 &&
+              axi.aw_burst == 2'b01 && axi.aw_cache == 4'b1111 &&
+              axi.aw_addr[5:0] == '0, "invalid AXI write burst attributes");
         write_active_q <= 1'b1;
-        write_addr_q <= axi_awaddr;
+        write_addr_q <= axi.aw_addr;
         write_beat_q <= '0;
       end
 
-      if (axi_wvalid && axi_wready) begin
+      if (axi.w_valid && axi.w_ready) begin
         w_count <= w_count + 1;
         check(write_active_q, "AXI W beat arrived before an AW handshake");
-        check(axi_wstrb == 8'hff, "cache writeback did not enable every byte");
+        check(axi.w_strb == 8'hff, "cache writeback did not enable every byte");
         for (byte_lane = 0; byte_lane < 8; byte_lane = byte_lane + 1)
-          if (axi_wstrb[byte_lane])
+          if (axi.w_strb[byte_lane])
             ram[write_addr_q[10:3] + 8'(write_beat_q)][byte_lane * 8 +: 8] <=
-                axi_wdata[byte_lane * 8 +: 8];
-        if (axi_wlast) begin
+                axi.w_data[byte_lane * 8 +: 8];
+        if (axi.w_last) begin
           check(write_beat_q == 4'd7, "AXI WLAST was not on beat seven");
           write_active_q <= 1'b0;
           b_pending_q <= 1'b1;
@@ -244,15 +211,15 @@ module cache_axi4_line_adapter_tb;
         end
       end
 
-      if (axi_bvalid && axi_bready) begin
-        axi_bvalid <= 1'b0;
-      end else if (!axi_bvalid && b_pending_q) begin
+      if (axi.b_valid && axi.b_ready) begin
+        axi.b_valid <= 1'b0;
+      end else if (!axi.b_valid && b_pending_q) begin
         if (b_delay_q != 0) begin
           b_delay_q <= b_delay_q - 1'b1;
         end else begin
-          axi_bvalid <= 1'b1;
-          axi_bid <= '0;
-          axi_bresp <= (b_addr_q == ERR_WRITE_ADDR) ? 2'b10 : 2'b00;
+          axi.b_valid <= 1'b1;
+          axi.b_id <= '0;
+          axi.b_resp <= (b_addr_q == ERR_WRITE_ADDR) ? 2'b10 : 2'b00;
           b_pending_q <= 1'b0;
         end
       end

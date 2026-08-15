@@ -24,18 +24,28 @@ package ap_soc_pkg;
   // non-DDR request complete with DECERR instead of entering axi_periph.
   localparam int unsigned AP_AXI_EGRESS_ERROR = 1;
 
+  // The AP physical map uses standard CLINT/PLIC locations and keeps every
+  // independently decoded aperture disjoint.  The 4 MiB PLIC window includes
+  // the M and S context register pages at offsets 0x0020_0000/0x0020_1000.
   localparam logic [AP_PADDR_W-1:0] AP_BOOT_ROM_BASE = 48'h0000_0000_0000;
   localparam logic [AP_PADDR_W-1:0] AP_BOOT_ROM_LIMIT = 48'h0000_0001_0000;
-  localparam logic [AP_PADDR_W-1:0] AP_CLINT_BASE = 48'h0000_0001_0000;
-  localparam logic [AP_PADDR_W-1:0] AP_CLINT_LIMIT = 48'h0000_0002_0000;
-  localparam logic [AP_PADDR_W-1:0] AP_PLIC_BASE = 48'h0000_0002_0000;
-  localparam logic [AP_PADDR_W-1:0] AP_PLIC_LIMIT = 48'h0000_0003_0000;
-  localparam logic [AP_PADDR_W-1:0] AP_APB_BASE = 48'h0000_0010_0000;
-  localparam logic [AP_PADDR_W-1:0] AP_APB_LIMIT = 48'h0000_0110_0000;
-  localparam logic [AP_PADDR_W-1:0] AP_BPI_BASE = 48'h0000_0100_0000;
-  localparam logic [AP_PADDR_W-1:0] AP_BPI_LIMIT = 48'h0000_0180_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_CLINT_BASE = 48'h0000_0200_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_CLINT_LIMIT = 48'h0000_0201_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_PLIC_BASE = 48'h0000_0c00_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_PLIC_LIMIT = 48'h0000_0c40_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_APB_BASE = 48'h0000_1000_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_APB_LIMIT = 48'h0000_1100_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_BPI_BASE = 48'h0000_2000_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_BPI_LIMIT = 48'h0000_2800_0000;
   localparam logic [AP_PADDR_W-1:0] AP_DDR_BASE = 48'h0000_8000_0000;
-  localparam logic [AP_PADDR_W-1:0] AP_DDR_LIMIT = 48'h0001_8000_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_DDR_LIMIT = 48'h0001_0000_0000;
+
+  localparam logic [AP_PADDR_W-1:0] AP_UART0_BASE = AP_APB_BASE + 48'h0000_0000;
+  localparam logic [AP_PADDR_W-1:0] AP_SPI0_BASE = AP_APB_BASE + 48'h0000_1000;
+  localparam logic [AP_PADDR_W-1:0] AP_TIMER0_BASE = AP_APB_BASE + 48'h0000_2000;
+  localparam logic [AP_PADDR_W-1:0] AP_GPIO0_BASE = AP_APB_BASE + 48'h0000_3000;
+  localparam logic [AP_PADDR_W-1:0] AP_WDT0_BASE = AP_APB_BASE + 48'h0000_4000;
+  localparam logic [AP_PADDR_W-1:0] AP_APB_PERIPH_SIZE = 48'h0000_1000;
 
   function automatic logic ap_addr_in_range(
     input logic [AP_PADDR_W-1:0] addr,

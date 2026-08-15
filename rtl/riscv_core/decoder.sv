@@ -604,10 +604,20 @@ module decoder
               o_id_ex.valid         = i_valid;
               o_id_ex.illegal_instr = 1'b0;
               o_id_ex.sys_op        = SYS_MRET;
+            end else if (i_inst[31:20] == 12'h102) begin
+              o_id_ex.valid         = i_valid;
+              o_id_ex.illegal_instr = 1'b0;
+              o_id_ex.sys_op        = SYS_SRET;
             end else if (i_inst[31:20] == 12'h105) begin
               o_id_ex.valid         = i_valid;
               o_id_ex.illegal_instr = 1'b0;
               o_id_ex.sys_op        = SYS_WFI;
+            end else if ((i_inst[31:25] == 7'b0001001) && (i_inst[11:7] == 5'd0)) begin
+              // SFENCE.VMA rs1,rs2; the retired source values select the
+              // local TLB entries to invalidate (zero denotes wildcard).
+              o_id_ex.valid         = i_valid;
+              o_id_ex.illegal_instr = 1'b0;
+              o_id_ex.sys_op        = SYS_SFENCE_VMA;
             end else if (i_inst[31:20] == 12'h7b2) begin
               o_id_ex.valid         = i_valid;
               o_id_ex.illegal_instr = 1'b0;
