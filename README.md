@@ -10,7 +10,7 @@ ap_soc
 ├── ap_cluster
 │   ├── shared Boot ROM
 │   └── ap_hart_tile
-│       ├── riscv_core (RV64GC, M/S/U)
+│       ├── core/riscv_core (RV64GC, M/S/U)
 │       └── ap_hart_memory_frontend
 │           ├── Sv39 ITLB, DTLB, shared PTW, and precise faults
 │           ├── private 32 KiB I-Cache and 32 KiB D-Cache
@@ -21,8 +21,9 @@ ap_soc
 └── ap_ethernet_subsystem  (DMA/IRQ boundary reserved)
 ```
 
-`ap_hart_tile` is structural: it wires `riscv_core` to the hart-local memory
-frontend and exports independent `axi_mem` and `axi_periph` managers.  Sv39
+`ap_hart_tile` is the canonical integration unit: its `core/riscv_core`
+execution submodule connects to the hart-local memory frontend and exports
+independent `axi_mem` and `axi_periph` managers.  Sv39
 translation precedes physical cacheability decode, so MMIO bypasses D-Cache
 but does not bypass DTLB.  Boot ROM fetches bypass I-Cache; DDR fetches use an
 8-beat, 64-bit cache-line refill.
@@ -34,9 +35,11 @@ BPI controller, Ethernet DMA, and any multi-hart coherence path.  This is not
 yet a Linux-boot completion claim.
 
 Focused simulation evidence currently covers core RV64GC/S-mode/Sv39 directed
-tests, Boot ROM -> I-Cache -> DDR routing, Sv39 routing and faults, and local
-peripheral routing.  It does not validate a physical DDR4 controller, FPGA
-timing, firmware, or Linux boot.
+tests, a direct `ap_hart_tile` Boot ROM -> I-Cache -> DDR AXI smoke, a
+sparse full-physical-address AXI DDR model, full Boot ROM -> BPI -> DDR
+regressions (including S-mode Sv39), direct Sv39 routing and faults, and local
+peripheral routing.  It does
+not validate a physical DDR4 controller, FPGA timing, firmware, or Linux boot.
 
 ## Start here
 

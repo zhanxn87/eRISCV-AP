@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2025-2026 Xianning Zhan
 // SPDX-License-Identifier: BSD-3-Clause
 
-// AP boot ROM: the only instruction source before I-Cache and DDR boot are
-// implemented. The ROM remains read-only to the hart and may be initialized
-// by a board-specific memory-init file.
+// AP boot ROM: reset instruction source before handoff to a DDR-resident payload.
+// The ROM remains read-only to the hart and may be initialized by a board-specific memory-init file.
 module ap_boot_rom
   import ap_soc_pkg::*;
 #(

@@ -10,20 +10,23 @@ contract.
 The normative target is a composable application-processor platform with a
 private hart tile, a shared memory system, a peripheral subsystem, and a
 separate Ethernet subsystem. The current RTL implements that shallow SoC
-boundary: `soc.sv` composes `ap_cluster`, `ap_memory_system`,
+boundary: `ap_soc.sv` composes `ap_cluster`, `ap_memory_system`,
 `ap_peripheral_subsystem`, and `ap_ethernet_subsystem`. `ap_cluster` owns the
-shared Boot ROM. `ap_hart_tile` is a structural wrapper for `riscv_core` and
-`ap_hart_memory_frontend`; that frontend owns the hart-local Sv39, cache, and
-physical-routing state and exports cached `axi_mem` plus uncached `axi_periph`
-managers. `ap_memory_system` exports DDR only and locally returns DECERR for
+shared Boot ROM. `ap_hart_tile` is the canonical per-hart integration unit; its
+`core/riscv_core` execution submodule and `mem/ap_hart_memory_frontend` are
+stored together under `rtl/soc/hart_tile/`. The frontend owns hart-local Sv39,
+cache, and physical-routing state and exports cached `axi_mem` plus uncached
+`axi_periph` managers. `ap_memory_system` exports DDR only and locally returns DECERR for
 non-DDR traffic; it is not a peripheral path.
 
 The peripheral slave complex is now integrated for the single-hart RTL:
-`axi_periph` decodes local CLINT, PLIC, and APB devices, and forwards only BPI
-to the external peripheral AXI egress. The VCU108 C1 DDR4 MIG source XCI is
+`axi_periph` routes local device traffic through the AXI-to-APB bridge; the APB
+decoder selects CLINT, PLIC, and low-speed peripherals, while BPI terminates
+in an AXI4-to-asynchronous-x16 NOR controller that drives SoC BPI pins. The VCU108 C1 DDR4 MIG source XCI is
 checked in; its board wrapper, AP-address rebase, 64-to-512 AXI adaptation,
-reset/calibration integration, Ethernet DMA, and multi-hart coherence remain
-follow-on work. The core has an M/S/U trap baseline, end-to-end Sv39 I/D
+reset/calibration integration and multi-hart coherence remain follow-on work.  The
+portable Ethernet DMA path is integrated at the SoC GMII boundary; board PCS/PMA
+integration remains follow-on work. The core has an M/S/U trap baseline, end-to-end Sv39 I/D
 request plumbing, and tested `SATP`, `SFENCE.VMA`, ITLB/DTLB/PTW/fault paths.
 No 32-bit TCM map, generic MCU DMA, legacy M2 APB fabric, M2 clock controller,
 or M2 watchdog reset tree is part of the AP SoC manifest.
@@ -32,8 +35,10 @@ or M2 watchdog reset tree is part of the AP SoC manifest.
 
 - One scalar, in-order RV64GC hart with a five-stage integer pipeline:
   `IF -> ID -> EX -> MEM -> WB`.
-- ISA target: `RV64GC` only: `I`, `M`, `A`, `F`, `D`, `C`, `Zicsr`, and
-  `Zifencei`.
+- ISA target: `RV64GC` plus `Zicbom`: `I`, `M`, `A`, `F`, `D`, `C`, `Zicsr`,
+  `Zifencei`, and cache-block `CBO.INVAL`, `CBO.CLEAN`, `CBO.FLUSH`.
+- `Zicboz` and `Zicbop` are not implemented. Firmware/DTB must publish the
+  fixed 64-byte CBO block size when it advertises `Zicbom`.
 - `Zba`, `Zbb`, `Zbs`, `Zicond`, `Zcf`, custom instructions, and all other
   non-target extensions are not AP ISA.  Their encodings trap as illegal.
 - PMP is not implemented and is not an AP requirement.
@@ -57,17 +62,17 @@ The long-term hierarchy is deliberately shallow at the SoC boundary:
 ap_soc
 ├── ap_cluster
 │   └── ap_hart_tile[0..AP_HART_COUNT-1]
-│       ├── RV64GC core
+│       ├── core/riscv_core (RV64GC execution pipeline)
 │       └── ap_hart_memory_frontend
 │           ├── ITLB, DTLB, shared PTW, and Sv39 fault control
 │           ├── private I-Cache and D-Cache
 │           └── cached and uncached physical AXI master ports
 ├── ap_memory_system
-│   ├── memory AXI4 fabric
+│   ├── ap_axi_mem_xbar (I-Cache, D-Cache, Ethernet DMA)
 │   ├── optional coherent L2 and directory
 │   └── DDR4/MIG boundary
 ├── ap_peripheral_subsystem
-│   ├── peripheral AXI4 decode
+│   ├── ap_axi_periph_xbar (APB, Flash/BPI, internal DECERR)
 │   ├── AXI-to-APB bridge
 │   └── CLINT, PLIC, and low-speed peripherals
 └── ap_ethernet_subsystem
@@ -77,9 +82,9 @@ ap_soc
     └── external PHY interface
 ```
 
-`riscv_core` owns architectural state; `ap_hart_memory_frontend` owns the
-per-hart translation, cache, and transaction state. Neither leaks into the
-shared SoC fabric. `ap_memory_system` owns only physical, cacheable memory
+Inside `ap_hart_tile`, `core/riscv_core` owns execution and architectural
+state; `mem/ap_hart_memory_frontend` owns per-hart translation, cache, and
+transaction state. Neither leaks into the shared SoC fabric. `ap_memory_system` owns only physical, cacheable memory
 traffic and the external DDR boundary. `ap_peripheral_subsystem` owns uncached
 device traffic. Ethernet spans both planes and is therefore a separate
 subsystem rather than a child of either one.
@@ -91,15 +96,16 @@ and reset but do not share a cacheable/uncached ingress mux.
 
 | Domain | Managers | Targets | Purpose |
 | --- | --- | --- | --- |
-| `axi_mem` | every hart I-Cache, every hart D-Cache, Ethernet DMA | coherent L2 if present, DDR4/MIG | cache-line fills, write-backs, PTE reads, DMA descriptors and payloads |
-| `axi_periph` | every hart uncached master | AXI-to-APB bridge, boot/control slaves | strongly ordered device/MMIO accesses |
+| `axi_mem` | every hart I-Cache, every hart D-Cache, Ethernet DMA | `ap_axi_mem_xbar` -> coherent L2 if present, DDR4/MIG, DECERR | cache-line fills, write-backs, PTE reads, DMA descriptors and payloads |
+| `axi_periph` | every hart uncached master | `ap_axi_periph_xbar` -> AXI-to-APB, Flash/BPI, internal DECERR | strongly ordered device/MMIO accesses |
 
-The initial single-hart peripheral path may be a one-manager address decoder
-rather than a general crossbar. A multi-hart build requires a peripheral
-interconnect, but not a second cacheable-memory fabric. The current RTL already
-has the separate planes at the subsystem boundary. Internally,
-`ap_memory_system` uses a three-ingress/two-egress transport only for DDR plus
-a local DECERR terminator; it never exports or shares `axi_periph`.
+The current single-hart RTL already routes its one uncached manager through
+`ap_axi_periph_xbar`, configured with APB and Flash/BPI target ports; unmatched
+requests terminate in PULP's internal DECERR slave.  The crossbar is the
+manager-side expansion point for a multi-hart cluster; no second cacheable-memory
+fabric is required.  `ap_memory_system` uses `ap_axi_mem_xbar` with three
+manager ports and two targets (DDR and DECERR); it never exports or shares
+`axi_periph`.
 
 ### Address translation and cacheability
 
@@ -130,11 +136,11 @@ implements the requested local TLB invalidation scope in the hart tile;
 
 ### Interrupt and Ethernet placement
 
-CLINT and PLIC use the local 32-bit control transport behind the 64-bit
-`axi_periph` slave; they are not routed through APB. Their outputs bypass every
-register bus: CLINT drives each hart's `mtime`, `msip`, and `mtip` inputs;
-PLIC drives distinct M/S context `meip` and `seip` inputs directly. Register
-latency therefore cannot delay interrupt propagation.
+CLINT and PLIC are 32-bit APB slaves behind the 64-bit `axi_periph`
+AXI-to-APB bridge. Their outputs bypass every register bus: CLINT drives each
+hart's `mtime`, `msip`, and `mtip` inputs; PLIC drives distinct M/S context
+`meip` and `seip` inputs directly. APB register latency therefore cannot delay
+interrupt propagation.
 
 The Ethernet MAC control register file is an APB slave. Its DMA is an
 `axi_mem` manager and its interrupt is a PLIC source. The first DMA contract
@@ -142,32 +148,73 @@ is non-coherent: software owns D-Cache clean/invalidate operations for
 shared buffers. A future coherent L2 may add an I/O coherence port without
 changing the MAC control interface.
 
+### Ethernet IP baseline and board split
+
+The frozen MAC baseline is the MIT-licensed `alexforencich/verilog-ethernet`
+revision `77320a9471d19c7dd383914bc049e02d9f4f1ffb`. AP vendors only the
+self-contained 1G GMII MAC closure: `eth_mac_1g`, `axis_gmii_rx`,
+`axis_gmii_tx`, and its CRC LFSR. The local module name `ap_eth_lfsr`
+replaces the upstream generic `lfsr` solely to avoid collision with
+`rtl/vendor/common_cells`; the vendor README records the exact delta.
+
+The portable Ethernet subsystem terminates at a GMII boundary and owns
+clock-domain crossings between SoC/DMA logic and the PCS clocks; it must not
+assume that the SoC root clock is 125 MHz. The VCU108 wrapper owns the
+Marvell M88E1111 SGMII PCS/PMA, LVDS reference clock, MDIO/MDC, PHY reset,
+and SGMII pins. `fpga/vcu108/ip/gig_ethernet_pcs_pma/create_ip.tcl` is
+the source-controlled Vivado PCS/PMA configuration, not generated IP output.
+
+The SoC instantiates the initial Ethernet data plane: APB direct-buffer control,
+64-bit AXI4 DMA, byte-stream clock-domain crossings, GMII MAC, and PLIC source 5.
+The controller submits one posted TX buffer and one posted RX buffer at a time;
+addresses must be eight-byte aligned; TX length is at most 1536 bytes and RX
+capacity is at most 2048 bytes. A completed-DMA token crosses to the PHY clock
+domain only after the whole TX frame reaches the asynchronous FIFO, so a faster
+PHY cannot underflow GMII TX.
+Descriptor rings, PHY management/link reporting, external D-Cache/reservation
+invalidations, and the Linux driver are later control-plane work.
+
 ### Current transition implementation
 
 Reset fetch is served by Boot ROM; DDR instruction fetch uses I-Cache. I-Cache
 and D-Cache have distinct `axi_mem` managers, while the blocking uncached
-master owns `axi_periph`. Ethernet DMA retains a reserved idle `axi_mem`
-manager. `ap_memory_system` connects the cacheable managers to DDR and its
-local DECERR terminator. `ap_peripheral_subsystem` accepts 64-bit single-beat
-uncached AXI requests, splits only selected 32-bit lanes into local accesses,
-and decodes CLINT, PLIC, UART0, SPI0, timer0, and GPIO0. BPI is the sole
-external `periph_axi_o` egress.
+master owns `axi_periph`. Ethernet DMA owns the third `axi_mem` manager and
+reaches its APB register plane through the peripheral subsystem. `ap_memory_system` connects the cacheable managers to DDR and its
+local DECERR terminator. `ap_peripheral_subsystem` accepts 64-bit uncached AXI requests through
+`ap_axi_periph_xbar`. The crossbar maps CLINT, PLIC, and the APB aperture to
+the local AXI-to-APB bridge; BPI maps to `ap_axi_bpi_nor`, which drives the
+x16 asynchronous NOR pins. The first revision accepts aligned single-beat
+64-bit reads, assembles four little-endian halfwords, and returns `SLVERR` for
+writes; all other addresses complete through PULP axi_xbar's decode-error slave.
 
 The following current tests exercise the actual SoC path, not only
 elaboration:
 
 - `make -C dv/soc/sim ap-soc-route`: Boot ROM -> I-Cache -> `axi_mem` -> DDR;
   it asserts an eight-beat 64-bit line fill at `AP_DDR_BASE`.
+- `make -C dv/soc/sim ap-soc-flash-boot-regression`: no DDR preload; executes
+  Boot ROM from reset, verifies the generated payload XOR64 while copying it
+  from BPI to DDR, proves a self-modifying `FENCE.I` path and an exact
+  multi-64-byte-line transfer, waits through a 64-cycle RY/BY# stall, and
+  rejects corrupt magic/version/size/load/entry/checksum fields.
+- `make -C dv/soc/sim ap-soc-flash-boot-sv39`: the same BPI/DDR boot path
+  builds page tables in its DDR payload, enters S-mode with Sv39, and proves
+  translated I/D accesses plus PTW A/D atomic updates.
 - `make -C dv/soc/sim ap-soc-periph-route`: Boot ROM -> uncached
   `axi_periph` -> local AXI-to-APB UART path; it fails if a DDR read or BPI
   egress request is issued.
 - `make -C dv/soc/sim ap-peripheral-subsystem`: 64-bit AXI lane splitting,
-  CLINT `MSIP`/`MTIP`/`MTIME`, APB GPIO, PLIC M/S contexts, and BPI egress.
+  CLINT APB `MSIP`/`MTIP`/`MTIME`, APB GPIO, Ethernet APB decode, PLIC APB M/S
+  contexts, and BPI NOR read access.
+- `make -C dv/soc/sim ap-ethernet-dma`: APB direct-buffer control, AXI64 DMA
+  reads/writes, independent SoC/PHY-clock CDC, GMII TX preamble/SFD/payload/FCS,
+  CRC-valid GMII RX, and DDR payload round-trip. It does not validate descriptor rings, board PCS/PMA,
+  PHY management, Linux driver behavior, or cache coherency.
 
 Implementation source for the AXI transport is the frozen
 [PULP AXI](https://github.com/pulp-platform/axi) `v0.35.3` snapshot in
 `rtl/vendor/axi/`; its matching `common_cells v1.21.0` dependency is vendored
-locally. AP-owned topology and bridge wrappers live in `rtl/soc/axi/`.
+locally. AP-owned AXI topology and bridge wrappers live in `rtl/soc/memory/axi/` and `rtl/soc/peripherals/{axi,apb,flash}/`.
 
 ## Physical address map
 
@@ -188,7 +235,7 @@ The DDR range is `0x0000_8000_0000` through `0x0000_ffff_ffff`, matching the
 VCU108 C1 MIG source configuration. It replaces
 the legacy local data memories as the normal CPU data-memory target. There is no
 AP architectural DTCM aperture. All listed device windows are non-overlapping;
-BPI is the only one forwarded to external `periph_axi_o`.
+BPI terminates in `ap_axi_bpi_nor`, which exposes a 26-bit x16 word address, read data pins, and CE#/OE#/WE#/RESET#/RYBY# control pins at `ap_soc`.
 
 ### Implemented APB sub-map
 
@@ -199,10 +246,11 @@ BPI is the only one forwarded to external `periph_axi_o`.
 | `0x0000_1000_2000` | timer0 | 3 |
 | `0x0000_1000_3000` | GPIO0 | — |
 | `0x0000_1000_4000` | WDT0 reserved | 4 reserved |
+| `0x0000_1000_5000` | Ethernet MAC/DMA | 5; direct-buffer APB/DMA RTL |
 
 PLIC context 0 (M) is at offset `0x0020_0000`; context 1 (S) is at
-`0x0020_1000`. Ethernet is reserved as PLIC source ID 5; its MAC/DMA remains
-an idle placeholder, not a delivered device.
+`0x0020_1000`. Ethernet is PLIC source ID 5. Its APB aperture at
+`0x0000_1000_5000` controls the initial direct-buffer DMA engine.
 
 ## L1 cache architecture
 
@@ -254,6 +302,30 @@ translation and before board-level DDR controller integration.
   D-Cache drain (`FENCE`) from instruction-cache invalidation (`FENCE.I`),
   while retaining the required `FENCE.I` ordering.
 
+### Zicbom cache-block maintenance
+
+`Zicbom` is implemented for the fixed 64-byte L1 D-Cache block. `CBO.INVAL`,
+`CBO.CLEAN`, and `CBO.FLUSH` use the `rs1` effective address, Sv39 translation,
+and store permission/fault path; translation may set PTE.A but does not set
+PTE.D. They are cache-maintenance transactions, never ordinary D-bus stores,
+and never allocate a missing line. A clean writes a dirty resident line back, a
+flush writes it back then invalidates it, and an invalidate discards a resident
+line without writeback. The local cache owns only DDR lines, so a CBO to a
+non-resident or non-DDR physical block completes without peripheral I/O.
+
+M-mode always permits the operations. At reset, `menvcfg.CBIE=11` and
+`menvcfg.CBCFE=1`, permitting S-mode native invalidate, clean, and flush.
+`CBIE=01` changes S-mode `CBO.INVAL` into a flush, `CBIE=00` disables it, and
+the reserved `CBIE=10` WARL write is coerced to `00`. Clear `CBCFE` to disable
+S-mode clean/flush. U-mode CBOs are illegal until `senvcfg` is implemented;
+the AP does not implement the hypervisor qualification CSRs.
+
+For non-coherent DMA, software cleans a CPU-produced buffer before the device
+reads it, and invalidates a device-produced buffer before the CPU reads it.
+The required ownership transfer is fenced around the DMA descriptor/doorbell;
+`CBO.FLUSH` is the conservative handoff when the CPU will not retain the line.
+This is the current Ethernet DMA software contract.
+
 ### Atomics and external agents
 
 RV64A is a cache responsibility at the memory-system boundary, not a sequence
@@ -264,15 +336,16 @@ of ordinary load/store accesses.
   returns the sign-extended pre-operation 32-bit value; `AMO.D` returns the
   full 64-bit pre-operation value.
 - The reservation granule is one D-Cache line.  An `LR` records that line;
-  an overlapping core store, AMO, eviction, invalidate, trap/reset, or an
-  explicit external invalidation clears it.  `SC` returns zero on success and
+  an overlapping core store, AMO, eviction, invalidate, or trap/reset clears it.
+  The current SoC has no external invalidation source.  `SC` returns zero on success and
   one on failure.
-- Ethernet DMA and future masters are initially non-coherent. Before their
-  RTL and Linux driver contract are accepted, no DMA may access cacheable
-  buffers. The DMA specification must define clean/invalidate ownership and
-  feed external-write invalidations to D-Cache reservation state. A coherent
-  L2/directory is the required future alternative for multi-hart cache sharing
-  or an I/O-coherent DMA port.
+- Ethernet DMA is non-coherent. Before TX, software cleans the physical DDR buffer
+  (`CBO.CLEAN`, then `FENCE`); after RX completion, it invalidates the buffer
+  (`CBO.INVAL`, then `FENCE`) before CPU consumption. The current hardware does
+  not inject external D-Cache or LR/SC-reservation invalidations, so software
+  must not execute LR/SC or race cached accesses while a buffer is device-owned.
+  A coherent L2/directory remains the future alternative for multi-hart cache
+  sharing or an I/O-coherent DMA port.
 - Debug SBA accesses to DDR require a halted-hart cache-maintenance sequence;
   direct SBA reads are not guaranteed to observe dirty D-Cache lines.
 
@@ -303,23 +376,33 @@ of ordinary load/store accesses.
   store. The AXI bridge issues only the 32-bit lanes selected by the RV64 byte
   enables, so narrow loads do not cause duplicate side-effecting reads.
   CLINT/PLIC interrupt outputs remain direct hart signals.
-- The initial implementation may expose only one uncached manager. Multiple
-  harts require arbitration in the peripheral subsystem; they do not require
-  DMA to share the peripheral fabric.
+- The initial implementation exposes one uncached manager. `ap_axi_periph_xbar`
+  is the explicit arbitration and address-decode boundary for future hart
+  managers; DMA does not share the peripheral fabric.
 
 ### Transitional transport
 
 The current cacheable-memory fabric accepts up to eight outstanding
 transactions and may reorder responses across IDs. PULP crossbar links append
-ingress-route bits internally; `ap_axi64_fabric` maps them back to the required
+ingress-route bits internally; `ap_axi_mem_xbar` maps them back to the required
 4-bit DDR/error boundary with `axi_iw_converter`. This transport detail is not
 the final subsystem API.
 
 ## Boot and Linux target
 
-Boot ROM initializes DDR through the platform memory controller, verifies and
-loads the AP boot package from BPI NOR flash, then transfers control to
-OpenSBI.  OpenSBI enters Linux with a DTB and initramfs in DDR.
+The implemented first-stage Boot ROM assumes that board DDR reset/calibration
+has already completed. It reads a 64-byte little-endian BPI header (magic,
+version, payload length, DDR load address, entry address, and XOR64 payload
+checksum), validates that the eight-byte-aligned payload fits the AP DDR
+aperture, verifies the checksum while copying it with aligned 64-bit BPI
+reads, executes `FENCE.I`, and jumps to the DDR entry. The XOR64 check detects
+accidental corruption; it is not image authentication. `sw/ap_bootrom/`
+generates the ROM and x16 BPI images consumed by the boot regressions; their
+payloads are bare-metal verification programs, not OpenSBI.
+
+The production sequence is Boot ROM -> BPI package -> OpenSBI -> Linux with a
+DTB and initramfs in DDR. DDR/MIG initialization, image authentication, a CFI
+flash-programming path, and the OpenSBI/DTB handoff are not yet implemented.
 
 Linux enablement requires, at minimum: the delivered S-mode baseline plus Sv39
 with ITLB/DTLB/PTW and precise page/access faults, I-Cache, D-Cache, CLINT,
@@ -339,18 +422,20 @@ The cache milestone is accepted only with focused simulation evidence for:
 4. `FENCE` completion against a pending dirty line;
 5. RV64 `LD/SD/LW/LWU` over cache hit and miss paths;
 6. LR/SC success and failure, all AMO.W/D operations, and reservation
-   invalidation on overlapping local and external writes; and
+   invalidation on overlapping local writes, eviction, invalidate, trap, and reset; and
 7. I-Cache refill, same-line hit, and invalidation/refill; and
 8. preservation of existing RV64I/M/F/D/C directed regressions.
 
 Current evidence: `check-filelist` resolves the AP SoC manifest;
-`ap-soc-route`, `ap-soc-periph-route`, `ap-soc-sv39-route`,
+`tile-smoke`, `ap-soc-route`, `ap-soc-flash-boot-regression`,
+`ap-soc-flash-boot-sv39`, `ap-soc-periph-route`, `ap-soc-sv39-route`,
 `ap-soc-sv39-fault`, and `ap-peripheral-subsystem` pass; and `rv64-directed`
 passes the RV64 core, ALU/control-flow, M, load/store, C, F/D move, F/D, A,
 FENCE, S-mode, and SFENCE.VMA directed tests. The S-mode/SATP CSR test and
-focused Sv39 PTE, PTW, TLB, and MMU-controller tests pass. These checks do not
-validate board-level DDR/MIG adaptation, a production BPI controller,
-Ethernet/DMA, firmware/DTB, FPGA timing, or Linux boot.
+focused Sv39 PTE, PTW, TLB, and MMU-controller tests pass; `ap-ethernet-dma`
+passes the APB-to-AXI DMA and GMII data path. These checks do not validate
+board-level DDR/MIG adaptation, flash program/erase or CFI behavior, Ethernet
+descriptor rings/PHY/Linux coherency, firmware/DTB, FPGA timing, or Linux boot.
 
 ## Implementation sequence
 
@@ -360,8 +445,8 @@ Ethernet/DMA, firmware/DTB, FPGA timing, or Linux boot.
    D-Cache with 512-bit, 64-bit-AXI line transport.
 3. **Done:** extract `ap_hart_tile`, `ap_cluster`, `ap_memory_system`,
    `ap_peripheral_subsystem`, and `ap_ethernet_subsystem`; split `axi_mem` and
-   `axi_periph`; remove the shared cache/MMIO mux; and add core-driven routing
-   smoke tests.
+   `axi_periph`; remove the shared cache/MMIO mux; and add direct hart-tile and SoC routing smoke tests; place every private hart
+   implementation module below `rtl/soc/hart_tile/`.
 4. **Done:** implement M/S/U supervisor trap state, delegation, S-level
    interrupt state, supervisor CSR access rules, and `SRET`, with directed
    synchronous and interrupt-delegation tests.
@@ -370,9 +455,13 @@ Ethernet/DMA, firmware/DTB, FPGA timing, or Linux boot.
    page/access-fault plumbing and MPRV effective privilege.
 6. **Done (local peripherals and MIG source):** integrate 64-bit
    `axi_periph` lane handling, AXI-to-APB, CLINT, M/S PLIC contexts,
-   UART0/SPI0/timer0/GPIO0, BPI egress, and the VCU108 C1 MIG source XCI.
-   **Next:** the AP board wrapper (DDR rebase, 64-to-512 adapter, and
-   calibration reset), a production BPI controller, boot firmware, and DTB.
-7. **Then:** integrate non-coherent Ethernet DMA plus its Linux
-   cache-maintenance ABI; add L2/directory before any multi-hart private
-   write-back D-Cache configuration.
+   UART0/SPI0/timer0/GPIO0, the read-only x16 BPI NOR controller, its generated
+   first-stage boot image, and the VCU108 C1 MIG source XCI. **Next:** the AP
+   board wrapper (DDR rebase, 64-to-512 adapter, and calibration reset), BPI
+   CFI/program-erase support, OpenSBI, and DTB.
+7. **Done (initial Ethernet data plane):** vendor the MIT 1G MAC source closure,
+   source-control the VCU108 SGMII PCS/PMA configuration, and integrate APB
+   direct-buffer control, non-coherent AXI4 DMA, CDC, GMII MAC, PLIC source 5,
+   and MAC-level TX/RX simulation. **Next:** descriptor rings, PHY management,
+   Linux Zicbom buffer-ownership driver ABI, and board PCS/PMA integration; add
+   L2/directory before any multi-hart private write-back D-Cache configuration.

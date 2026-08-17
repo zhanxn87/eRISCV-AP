@@ -17,8 +17,10 @@ module ap_soc_sv39_route_tb;
   logic satp_seen;
   logic s_mode_seen;
   logic translated_fetch_seen;
+  logic translated_instruction_seen;
   int unsigned ptw_read_count;
   int unsigned ptw_amo_count;
+  logic [511:0] s_mode_line;
   logic [63:0] mtime = '0;
   logic [31:0] irq = '0;
 
@@ -28,14 +30,15 @@ module ap_soc_sv39_route_tb;
     .AXI_ID_WIDTH(AP_AXI_SLV_ID_W),
     .AXI_USER_WIDTH(AP_AXI_USER_W)
   ) ddr_axi ();
-  AXI_BUS #(
-    .AXI_ADDR_WIDTH(AP_PADDR_W),
-    .AXI_DATA_WIDTH(AP_AXI_DATA_W),
-    .AXI_ID_WIDTH(AP_AXI_SLV_ID_W),
-    .AXI_USER_WIDTH(AP_AXI_USER_W)
-  ) periph_axi ();
 
-  soc dut (
+  logic [AP_BPI_ADDR_W-1:0] bpi_addr;
+  wire [AP_BPI_DATA_W-1:0] bpi_dq;
+  logic bpi_ce_n;
+  logic bpi_oe_n;
+  logic bpi_we_n;
+  logic bpi_reset_n;
+  logic bpi_ryby_n = 1'b1;
+  ap_soc dut (
     .clk(clk),
     .rst_n(rst_n),
     .fetch_enable_i(fetch_enable),
@@ -50,6 +53,16 @@ module ap_soc_sv39_route_tb;
     .spi_sclk_o(),
     .spi_mosi_o(),
     .spi_ss_o(),
+    .eth_rx_clk_i(clk),
+    .eth_rx_rst_n_i(rst_n),
+    .eth_gmii_rxd_i(8'h00),
+    .eth_gmii_rx_dv_i(1'b0),
+    .eth_gmii_rx_er_i(1'b0),
+    .eth_tx_clk_i(clk),
+    .eth_tx_rst_n_i(rst_n),
+    .eth_gmii_txd_o(),
+    .eth_gmii_tx_en_o(),
+    .eth_gmii_tx_er_o(),
     .debug_halt_req_i(1'b0),
     .debug_resume_req_i(1'b0),
     .debug_halted_o(),
@@ -57,13 +70,25 @@ module ap_soc_sv39_route_tb;
     .debug_pc_o(),
     .debug_cause_o(),
     .ddr_axi_o(ddr_axi),
-    .periph_axi_o(periph_axi)
+    .bpi_addr_o(bpi_addr),
+    .bpi_dq_io(bpi_dq),
+    .bpi_ce_n_o(bpi_ce_n),
+    .bpi_oe_n_o(bpi_oe_n),
+    .bpi_we_n_o(bpi_we_n),
+    .bpi_reset_n_o(bpi_reset_n),
+    .bpi_ryby_n_i(bpi_ryby_n)
   );
 
   axi4_line_mem #(
     .PADDR_W_P(AP_PADDR_W),
     .AXI_DATA_W_P(AP_AXI_DATA_W),
-    .AXI_ID_W_P(AP_AXI_SLV_ID_W)
+    .AXI_ID_W_P(AP_AXI_SLV_ID_W),
+    .SPARSE_P(1'b1),
+    .MAX_READ_TXNS_P(2),
+    .MAX_WRITE_TXNS_P(2),
+    .READ_LATENCY_P(1),
+    .AR_STALL_CYCLES_P(1),
+    .AW_STALL_CYCLES_P(1)
   ) ddr_mem_i (
     .clk(clk),
     .rst_n(rst_n),
@@ -71,19 +96,6 @@ module ap_soc_sv39_route_tb;
   );
 
   // The peripheral complex is not part of this translated DDR-fetch test.
-  assign periph_axi.aw_ready = 1'b0;
-  assign periph_axi.w_ready = 1'b0;
-  assign periph_axi.b_id = '0;
-  assign periph_axi.b_resp = 2'b00;
-  assign periph_axi.b_user = '0;
-  assign periph_axi.b_valid = 1'b0;
-  assign periph_axi.ar_ready = 1'b0;
-  assign periph_axi.r_id = '0;
-  assign periph_axi.r_data = '0;
-  assign periph_axi.r_resp = 2'b00;
-  assign periph_axi.r_last = 1'b0;
-  assign periph_axi.r_user = '0;
-  assign periph_axi.r_valid = 1'b0;
 
   always #5 clk = ~clk;
 
@@ -127,11 +139,14 @@ module ap_soc_sv39_route_tb;
     // The mapped S-mode target loads then stores the same virtual page. The
     // leaf starts with A=D=0, so fetch sets A and the DTLB-hit store re-walks
     // to set D through the PTW's D-Cache AMOOR port.
-    ddr_mem_i.mem[0] = '0;
-    ddr_mem_i.mem[0][31:0] = 32'h4000_02b7;
-    ddr_mem_i.mem[0][63:32] = 32'h0002_b303;
-    ddr_mem_i.mem[0][95:64] = 32'h0062_b423;
-    ddr_mem_i.mem[0][127:96] = 32'h0000_006f;
+    s_mode_line = '0;
+    s_mode_line[31:0] = 32'h4000_02b7;
+    s_mode_line[63:32] = 32'h0002_b303;
+    s_mode_line[95:64] = 32'h0062_b423;
+    s_mode_line[127:96] = 32'h0000_006f;
+    // Sparse associative storage initializes after time zero in Verilator.
+    #1;
+    ddr_mem_i.preload_line(AP_DDR_BASE, s_mode_line);
   end
 
   always_ff @(posedge clk or negedge rst_n) begin
@@ -139,6 +154,7 @@ module ap_soc_sv39_route_tb;
       satp_seen <= 1'b0;
       s_mode_seen <= 1'b0;
       translated_fetch_seen <= 1'b0;
+      translated_instruction_seen <= 1'b0;
       ptw_read_count <= '0;
       ptw_amo_count <= '0;
     end else begin
@@ -146,17 +162,22 @@ module ap_soc_sv39_route_tb;
         satp_seen <= 1'b1;
       if (dut.cluster_i.hart_tile_i.hart_privilege == PRIV_S)
         s_mode_seen <= 1'b1;
-      if (dut.cluster_i.hart_tile_i.mmu_pte_req_valid &&
-          dut.cluster_i.hart_tile_i.mmu_pte_req_ready) begin
-        if (dut.cluster_i.hart_tile_i.mmu_pte_atomic_op == ATOMIC_OR)
+      if (dut.cluster_i.hart_tile_i.memory_frontend_i.mmu_pte_req_valid &&
+          dut.cluster_i.hart_tile_i.memory_frontend_i.mmu_pte_req_ready) begin
+        if (dut.cluster_i.hart_tile_i.memory_frontend_i.mmu_pte_atomic_op == ATOMIC_OR)
           ptw_amo_count <= ptw_amo_count + 1'b1;
         else
           ptw_read_count <= ptw_read_count + 1'b1;
       end
       if ((dut.cluster_i.hart_tile_i.hart_privilege == PRIV_S) &&
-          dut.cluster_i.hart_tile_i.icache_line_req &&
-          (dut.cluster_i.hart_tile_i.icache_line_addr == AP_DDR_BASE))
+          dut.cluster_i.hart_tile_i.memory_frontend_i.icache_line_req &&
+          (dut.cluster_i.hart_tile_i.memory_frontend_i.icache_line_addr == AP_DDR_BASE))
         translated_fetch_seen <= 1'b1;
+      if ((dut.cluster_i.hart_tile_i.hart_privilege == PRIV_S) &&
+          dut.cluster_i.hart_tile_i.memory_frontend_i.icache_imem_rvalid &&
+          (dut.cluster_i.hart_tile_i.memory_frontend_i.icache_imem_addr == AP_DDR_BASE) &&
+          (dut.cluster_i.hart_tile_i.memory_frontend_i.icache_imem_rdata == 32'h4000_02b7))
+        translated_instruction_seen <= 1'b1;
     end
   end
 
@@ -167,12 +188,14 @@ module ap_soc_sv39_route_tb;
     repeat (1500) begin
       @(posedge clk);
       if (satp_seen && s_mode_seen && (ptw_read_count >= 9) &&
-          (ptw_amo_count >= 2) && translated_fetch_seen) begin
+          (ptw_amo_count >= 2) && translated_fetch_seen &&
+          translated_instruction_seen) begin
         $display("PASS: AP hart Sv39 ITLB/DTLB/PTW atomic A/D -> translated DDR fetch/load/store");
         $finish;
       end
     end
-    $fatal(1, "timeout waiting for Sv39 translated hart route: satp=%b s=%b pte_reads=%0d pte_amo=%0d icache=%b",
-           satp_seen, s_mode_seen, ptw_read_count, ptw_amo_count, translated_fetch_seen);
+    $fatal(1, "timeout waiting for Sv39 translated hart route: satp=%b s=%b pte_reads=%0d pte_amo=%0d icache=%b instruction=%b",
+           satp_seen, s_mode_seen, ptw_read_count, ptw_amo_count, translated_fetch_seen,
+           translated_instruction_seen);
   end
 endmodule

@@ -19,6 +19,22 @@ When it exists, the script exits without importing it, avoiding numbered IP
 siblings.  Generated IP targets, HDL, constraints, and example-design files
 are build products and are intentionally not version controlled.
 
+## Ethernet source IP
+
+The VCU108 RJ45 PHY is a Marvell M88E1111 and its board connection is SGMII
+over LVDS. `ip/gig_ethernet_pcs_pma/create_ip.tcl` source-controls the
+Vivado `gig_ethernet_pcs_pma` configuration: SGMII, LVDS, a 625 MHz LVDS
+reference, and shared logic included in the core. Generated IP output is not
+version controlled.
+
+The portable AP Ethernet subsystem already terminates at the MAC-side GMII
+interface. The future `eriscv_ap_vcu108_top` owns the SGMII differential pairs,
+PHY MDIO/MDC, PHY reset, and PHY interrupt; those board pins do not belong on a
+DDR AXI boundary or in the generic memory system. The MIT MAC source closure,
+APB direct-buffer control, AXI DMA, and SoC-to-GMII clock crossings are
+integrated in portable RTL. Descriptor rings, PHY management, and the
+GMII-to-PCS/PMA board wrapper remain pending integration work.
+
 ## AP integration status
 
 The source XCI exists, but an AP board top does not yet.  The remaining FPGA
