@@ -21,6 +21,7 @@
 ../../../rtl/vendor/common_cells/src/edge_propagator_tx.sv
 ../../../rtl/vendor/common_cells/src/exp_backoff.sv
 ../../../rtl/vendor/common_cells/src/fifo_v3.sv
+../../../rtl/vendor/common_cells/src/deprecated/fifo_v2.sv
 ../../../rtl/vendor/common_cells/src/gray_to_binary.sv
 ../../../rtl/vendor/common_cells/src/isochronous_spill_register.sv
 ../../../rtl/vendor/common_cells/src/lfsr.sv
@@ -195,6 +196,7 @@
 ../../../rtl/soc/memory/axi/ap_axi_mem_xbar.sv
 ../../../rtl/soc/memory/ap_memory_system.sv
 ../../../rtl/soc/peripherals/axi/ap_axi_periph_xbar.sv
+../../../rtl/soc/peripherals/axi/ap_axi64_idle_master.sv
 ../../../rtl/soc/peripherals/apb/ap_axi64_to_apb32.sv
 ../../../rtl/soc/peripherals/flash/ap_axi_bpi_nor.sv
 ../../../rtl/soc/peripherals/clint.sv
@@ -216,7 +218,9 @@
 ../../../rtl/vendor/verilog_ethernet/rtl/axis_gmii_tx.v
 ../../../rtl/vendor/verilog_ethernet/rtl/eth_mac_1g.v
 ../../../rtl/soc/ethernet/axis/ap_eth_axis64_to_axis8.sv
+../../../rtl/soc/ethernet/axi/ap_eth_ring_engine.sv
 ../../../rtl/soc/ethernet/axis/ap_eth_axis8_cdc.sv
+../../../rtl/soc/ethernet/axis/ap_eth_tx_frame_buffer.sv
 ../../../rtl/soc/ethernet/axis/ap_eth_rx_frame_buffer.sv
 ../../../rtl/soc/ethernet/apb/ap_eth_dma_regs.sv
 ../../../rtl/soc/ethernet/ap_ethernet_subsystem.sv

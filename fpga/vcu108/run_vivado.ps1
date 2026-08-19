@@ -3,13 +3,17 @@
 
 param(
   [ValidateSet("gui", "synth", "impl")]
-  [string]$Flow = "impl"
+  [string]$Flow = "gui"
 )
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $TclScript = Join-Path $ScriptDir "scripts\${Flow}_vcu108.tcl"
 Set-Location $ScriptDir
+if (-not $env:ERISCV_VIVADO_BUILD_DIR) {
+  $env:ERISCV_VIVADO_BUILD_DIR = "D:\Work\xnz_rtl\vivado\eRISCV-AP\vcu108"
+}
+New-Item -ItemType Directory -Force -Path $env:ERISCV_VIVADO_BUILD_DIR | Out-Null
 $VivadoCmd = (Get-Command vivado -ErrorAction SilentlyContinue).Source
 if (-not $VivadoCmd -and $env:XILINX_VIVADO) {
   $Candidate = Join-Path $env:XILINX_VIVADO "bin\vivado.bat"

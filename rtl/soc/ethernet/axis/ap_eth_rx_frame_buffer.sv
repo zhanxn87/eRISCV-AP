@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2025-2026 Xianning Zhan
 // SPDX-License-Identifier: BSD-3-Clause
 
-// One posted RX buffer.  It records one complete MAC frame before launching a
-// DDR write DMA descriptor, which gives axi_dma its required transfer length.
-// This is intentionally a bring-up queue, not a Linux descriptor ring.
+// One descriptor-backed RX frame staging buffer. The ring engine arms it for
+// each hardware-owned descriptor; it records a complete MAC frame before the
+// DDR write DMA, which gives axi_dma its required transfer length.
 module ap_eth_rx_frame_buffer #(
   parameter int unsigned MAX_FRAME_BYTES_P = 2048
 ) (
@@ -143,6 +143,15 @@ module ap_eth_rx_frame_buffer #(
         frame_ready_q <= 1'b0;
         frame_len_q <= '0;
         stream_active_q <= 1'b0;
+        rd_count_q <= '0;
+      end
+
+      if (!rx_enable_i && !stream_active_q) begin
+        armed_q <= 1'b0;
+        capture_q <= 1'b0;
+        drop_q <= 1'b0;
+        frame_ready_q <= 1'b0;
+        frame_len_q <= '0;
         rd_count_q <= '0;
       end
     end

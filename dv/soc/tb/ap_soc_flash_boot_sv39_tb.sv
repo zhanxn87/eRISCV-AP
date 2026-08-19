@@ -26,6 +26,7 @@ module ap_soc_flash_boot_sv39_tb;
   logic bpi_ce_n;
   logic bpi_oe_n;
   logic bpi_we_n;
+  logic bpi_adv_n;
   logic bpi_reset_n;
   logic bpi_ryby_n;
   logic satp_seen;
@@ -43,6 +44,13 @@ module ap_soc_flash_boot_sv39_tb;
     .AXI_ID_WIDTH(AP_AXI_SLV_ID_W),
     .AXI_USER_WIDTH(AP_AXI_USER_W)
   ) ddr_axi ();
+
+  AXI_BUS #(
+    .AXI_ADDR_WIDTH(AP_PADDR_W),
+    .AXI_DATA_WIDTH(AP_AXI_DATA_W),
+    .AXI_ID_WIDTH(AP_AXI_SLV_ID_W),
+    .AXI_USER_WIDTH(AP_AXI_USER_W)
+  ) bpi_axi ();
 
   ap_soc #(
     .BOOT_ROM_INIT_FILE_P("../../../sw/ap_bootrom/build/sv39/bootrom.mem")
@@ -68,6 +76,7 @@ module ap_soc_flash_boot_sv39_tb;
     .eth_gmii_rx_er_i(1'b0),
     .eth_tx_clk_i(clk),
     .eth_tx_rst_n_i(rst_n),
+    .eth_gmii_clk_enable_i(1'b1),
     .eth_gmii_txd_o(),
     .eth_gmii_tx_en_o(),
     .eth_gmii_tx_er_o(),
@@ -78,11 +87,13 @@ module ap_soc_flash_boot_sv39_tb;
     .debug_pc_o(),
     .debug_cause_o(),
     .ddr_axi_o(ddr_axi),
+    .bpi_axi_o(bpi_axi),
     .bpi_addr_o(bpi_addr),
     .bpi_dq_io(bpi_dq),
     .bpi_ce_n_o(bpi_ce_n),
     .bpi_oe_n_o(bpi_oe_n),
     .bpi_we_n_o(bpi_we_n),
+    .bpi_adv_n_o(bpi_adv_n),
     .bpi_reset_n_o(bpi_reset_n),
     .bpi_ryby_n_i(bpi_ryby_n)
   );
@@ -110,6 +121,7 @@ module ap_soc_flash_boot_sv39_tb;
     .ce_n_i(bpi_ce_n),
     .oe_n_i(bpi_oe_n),
     .we_n_i(bpi_we_n),
+    .adv_n_i(bpi_adv_n),
     .ryby_n_o(bpi_ryby_n)
   );
 

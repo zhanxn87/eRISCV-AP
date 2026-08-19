@@ -19,7 +19,7 @@ MODELSIM_COMPILE_DO = if {![file isdirectory $(MODELSIM_WORK)]} {vlib $(MODELSIM
 
 .DEFAULT_GOAL := ap-soc-route
 
-.PHONY: all help filelist check-filelist modelsim-compile modelsim-gui ap-soc-elab ap-soc-route ap-soc-flash-boot ap-soc-flash-boot-extended ap-soc-flash-boot-wait ap-soc-flash-boot-invalid ap-soc-flash-boot-regression ap-soc-flash-boot-sv39 ap-soc-periph-route ap-peripheral-subsystem ap-soc-sv39-route ap-soc-sv39-fault ap-soc-debug eth-mac-lint ap-ethernet-dma clean
+.PHONY: all help filelist check-filelist modelsim-compile modelsim-gui ap-soc-elab ap-soc-route ap-soc-flash-boot ap-soc-flash-boot-extended ap-soc-flash-boot-wait ap-soc-flash-boot-invalid ap-soc-flash-boot-regression ap-soc-flash-boot-sv39 ap-soc-periph-route ap-peripheral-subsystem ap-soc-sv39-route ap-soc-sv39-fault ap-soc-debug eth-mac-lint ap-ethernet-dma ap-ethernet-ring clean
 
 all: ap-soc-route
 
@@ -37,7 +37,8 @@ help:
 	@echo "  make ap-soc-sv39-fault (Sv39 instruction/data/PTE access fault routes)"
 	@echo "  make ap-soc-debug      (external halt/resume route through the SoC)"
 	@echo "  make eth-mac-lint      (MIT 1G MAC closure and namespace check)"
-	@echo "  make ap-ethernet-dma   (APB, 64-bit AXI DMA, CDC, GMII TX/FCS and CRC-valid RX)"
+	@echo "  make ap-ethernet-dma   (descriptor rings, AXI64 DMA, CDC, GMII TX/FCS and CRC-valid RX)"
+	@echo "  make ap-ethernet-ring  (alias for ap-ethernet-dma)"
 	@echo "  make modelsim-gui [MODELSIM_TOP=ap_soc_elab_tb]  (compile and open hierarchy)"
 	@echo "  make ap-soc-elab       (compatibility alias for ap-soc-route)"
 
@@ -134,6 +135,8 @@ ap-ethernet-dma: filelist
 	verilator --binary --timing -j $(VERILATOR_JOBS) -Wno-fatal -Wno-BLKANDNBLK --top-module ap_ethernet_dma_tb \
           -f file.list --Mdir $(AP_SOC_ROUTE_OBJ_DIR)_ethernet_dma
 	$(AP_SOC_ROUTE_OBJ_DIR)_ethernet_dma/Vap_ethernet_dma_tb
+
+ap-ethernet-ring: ap-ethernet-dma
 
 ap-soc-debug: filelist
 	verilator --binary --timing -Wno-fatal -Wno-BLKANDNBLK --top-module ap_soc_debug_route_tb \

@@ -13,4 +13,4 @@ report_utilization -file [file join $build_dir utilization_synth.rpt]
 report_timing_summary -delay_type max -file [file join $build_dir timing_summary_synth.rpt]
 report_clock_utilization -file [file join $build_dir clock_utilization_synth.rpt]
 write_checkpoint -force [file join $build_dir ${top_name}_synth.dcp]
-puts "INFO: M2 VCU108 synthesis complete."
+puts "INFO: AP VCU108 synthesis complete."

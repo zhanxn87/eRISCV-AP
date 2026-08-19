@@ -185,7 +185,7 @@
       },
       "project_parameters": {
         "ARCHITECTURE": [ { "value": "virtexu", "resolve_type": "generated", "usage": "all" } ],
-        "BASE_BOARD_PART": [ { "value": "", "resolve_type": "generated", "usage": "all" } ],
+        "BASE_BOARD_PART": [ { "value": "xilinx.com:vcu108:part0:1.7", "resolve_type": "generated", "usage": "all" } ],
         "BOARD_CONNECTIONS": [ { "value": "", "resolve_type": "generated", "usage": "all" } ],
         "DEVICE": [ { "value": "xcvu095", "resolve_type": "generated", "usage": "all" } ],
         "PACKAGE": [ { "value": "ffva2104", "resolve_type": "generated", "usage": "all" } ],
@@ -690,5 +690,5 @@
       }
     }
   },
-  "checksum": "1d4ae84d"
+  "checksum": "4c96a71b"
 }

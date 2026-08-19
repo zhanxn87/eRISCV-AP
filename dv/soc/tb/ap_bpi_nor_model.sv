@@ -17,11 +17,13 @@ module ap_bpi_nor_model #(
   input logic ce_n_i,
   input logic oe_n_i,
   input logic we_n_i,
+  input logic adv_n_i,
   output logic ryby_n_o
 );
 
   logic [15:0] mem [0:WORDS_P-1];
   logic [15:0] read_data;
+  logic [ADDR_W_P-1:0] latched_addr_q;
   localparam int unsigned MEM_ADDR_W_P = $clog2(WORDS_P);
   localparam logic [ADDR_W_P-1:0] LAST_WORD_ADDR_P = ADDR_W_P'(WORDS_P - 1);
 
@@ -31,10 +33,17 @@ module ap_bpi_nor_model #(
   end
 
   always_comb begin
-    if (addr_i <= LAST_WORD_ADDR_P)
-      read_data = mem[addr_i[MEM_ADDR_W_P-1:0]];
+    if (latched_addr_q <= LAST_WORD_ADDR_P)
+      read_data = mem[latched_addr_q[MEM_ADDR_W_P-1:0]];
     else
       read_data = 16'hffff;
+  end
+
+  always_ff @(posedge adv_n_i or negedge reset_n_i) begin
+    if (!reset_n_i)
+      latched_addr_q <= '0;
+    else
+      latched_addr_q <= addr_i;
   end
 
   assign dq_io = (reset_n_i && !ce_n_i && !oe_n_i && we_n_i) ? read_data : 16'hzzzz;

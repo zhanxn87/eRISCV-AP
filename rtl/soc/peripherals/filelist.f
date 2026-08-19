@@ -1,5 +1,6 @@
 // AP uncached-device subsystem, from the AXI peripheral crossbar to device IP.
 axi/ap_axi_periph_xbar.sv
+axi/ap_axi64_idle_master.sv
 apb/ap_axi64_to_apb32.sv
 flash/ap_axi_bpi_nor.sv
 clint.sv

@@ -15,6 +15,7 @@ src/ecc_pkg.sv
 src/edge_propagator_tx.sv
 src/exp_backoff.sv
 src/fifo_v3.sv
+src/deprecated/fifo_v2.sv
 src/gray_to_binary.sv
 src/isochronous_spill_register.sv
 src/lfsr.sv

@@ -3,4 +3,4 @@
 
 source [file join [file dirname [file normalize [info script]]] project_vcu108.tcl]
 setup_vcu108_project
-puts "INFO: M1 VCU108 GUI project ready."
+puts "INFO: AP VCU108 GUI project ready."

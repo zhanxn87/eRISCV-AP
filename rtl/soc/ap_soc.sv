@@ -12,7 +12,10 @@ module ap_soc #(
   parameter bit ENABLE_BHT_P = 1'b1,
   parameter bit ENABLE_RAS_P = 1'b1,
   parameter bit ENABLE_UPPER_32_PREFETCH_P = 1'b1,
-  parameter int unsigned MUL_ITER_BITS_P = 16
+  parameter int unsigned MUL_ITER_BITS_P = 16,
+  parameter int unsigned BPI_READ_WAIT_CYCLES_P = AP_BPI_READ_WAIT_CYCLES,
+  parameter int unsigned BPI_ADV_PULSE_CYCLES_P = AP_BPI_ADV_PULSE_CYCLES,
+  parameter bit USE_EMBEDDED_BPI_NOR_P = 1'b1
 ) (
   input logic clk,
   input logic rst_n,
@@ -37,6 +40,7 @@ module ap_soc #(
   input logic eth_gmii_rx_er_i,
   input logic eth_tx_clk_i,
   input logic eth_tx_rst_n_i,
+  input logic eth_gmii_clk_enable_i,
   output logic [7:0] eth_gmii_txd_o,
   output logic eth_gmii_tx_en_o,
   output logic eth_gmii_tx_er_o,
@@ -47,12 +51,15 @@ module ap_soc #(
   output logic [63:0] debug_pc_o,
   output logic [2:0] debug_cause_o,
   AXI_BUS.Master ddr_axi_o,
+  AXI_BUS.Master bpi_axi_o,
+
 
   output logic [AP_BPI_ADDR_W-1:0] bpi_addr_o,
   inout wire [AP_BPI_DATA_W-1:0] bpi_dq_io,
   output logic bpi_ce_n_o,
   output logic bpi_oe_n_o,
   output logic bpi_we_n_o,
+  output logic bpi_adv_n_o,
   output logic bpi_reset_n_o,
   input logic bpi_ryby_n_i
 );
@@ -137,6 +144,7 @@ module ap_soc #(
     .eth_gmii_rx_er_i,
     .eth_tx_clk_i,
     .eth_tx_rst_n_i,
+    .eth_gmii_clk_enable_i,
     .eth_gmii_txd_o,
     .eth_gmii_tx_en_o,
     .eth_gmii_tx_er_o,
@@ -151,7 +159,11 @@ module ap_soc #(
     .ddr_axi_o
   );
 
-  ap_peripheral_subsystem peripheral_system_i (
+  ap_peripheral_subsystem #(
+    .BPI_READ_WAIT_CYCLES_P(BPI_READ_WAIT_CYCLES_P),
+    .BPI_ADV_PULSE_CYCLES_P(BPI_ADV_PULSE_CYCLES_P),
+    .USE_EMBEDDED_BPI_NOR_P(USE_EMBEDDED_BPI_NOR_P)
+  ) peripheral_system_i (
     .clk(clk),
     .rst_n(rst_n),
     .eth_irq_i(eth_irq),
@@ -179,11 +191,13 @@ module ap_soc #(
     .eth_prdata_i(eth_apb_prdata),
     .eth_pslverr_i(eth_apb_pslverr),
     .periph_axi_i(periph_axi),
+    .bpi_axi_o(bpi_axi_o),
     .bpi_addr_o(bpi_addr_o),
     .bpi_dq_io(bpi_dq_io),
     .bpi_ce_n_o(bpi_ce_n_o),
     .bpi_oe_n_o(bpi_oe_n_o),
     .bpi_we_n_o(bpi_we_n_o),
+    .bpi_adv_n_o(bpi_adv_n_o),
     .bpi_reset_n_o(bpi_reset_n_o),
     .bpi_ryby_n_i(bpi_ryby_n_i)
   );

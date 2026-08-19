@@ -34,6 +34,8 @@ set mig_ip [get_ips $ip_name]
 set_property CONFIG.C0_DDR4_BOARD_INTERFACE ddr4_sdram_c1_062 $mig_ip
 set_property CONFIG.C0.DDR4_AxiSelection true $mig_ip
 set_property CONFIG.C0.DDR4_AxiIDWidth 4 $mig_ip
+# Keep the AP SoC in a low-frequency domain; DDR4 itself retains its 300 MHz UI.
+set_property CONFIG.ADDN_UI_CLKOUT1_FREQ_HZ 50 $mig_ip
 generate_target all $mig_ip
 puts "INFO: created $xci_file"
 exit

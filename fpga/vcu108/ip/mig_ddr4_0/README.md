@@ -11,10 +11,6 @@ IP directories.
 - MIG user AXI: 512-bit data, 4-bit ID
 - Reference clock: VCU108 `sysclk1_300` (300 MHz)
 
-Only `mig_ddr4_0/mig_ddr4_0.xci` is source-controlled.  A future AP board
-project consumes it and produces generated HDL, constraints, simulation
-sources, and example-design products in its build directory.
+Only `mig_ddr4_0/mig_ddr4_0.xci` is source-controlled.  `scripts/project_vcu108.tcl` copies it into `build/ip/` before target generation, so HDL, constraints, simulation sources, and example-design products stay build-local.
 
-The portable AP SoC remains 64-bit AXI.  The board wrapper must rebase the AP
-DDR aperture and convert 64-bit AXI to the MIG's 512-bit user AXI before this
-IP.
+The portable AP SoC remains 64-bit AXI. `rtl/ap_axi_ddr_bridge.sv` rebases the AP DDR aperture, filters unsupported AXI atomics, and converts 64-bit AXI to the MIG's 512-bit user AXI.

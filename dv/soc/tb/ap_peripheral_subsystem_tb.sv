@@ -42,6 +42,7 @@ module ap_peripheral_subsystem_tb;
   logic bpi_ce_n;
   logic bpi_oe_n;
   logic bpi_we_n;
+  logic bpi_adv_n;
   logic bpi_reset_n;
   logic bpi_ryby_n;
 
@@ -51,6 +52,12 @@ module ap_peripheral_subsystem_tb;
     .AXI_ID_WIDTH(AP_AXI_SLV_ID_W),
     .AXI_USER_WIDTH(AP_AXI_USER_W)
   ) axi ();
+  AXI_BUS #(
+    .AXI_ADDR_WIDTH(AP_PADDR_W),
+    .AXI_DATA_WIDTH(AP_AXI_DATA_W),
+    .AXI_ID_WIDTH(AP_AXI_SLV_ID_W),
+    .AXI_USER_WIDTH(AP_AXI_USER_W)
+  ) bpi_axi ();
   ap_peripheral_subsystem dut (
     .clk(clk),
     .rst_n(rst_n),
@@ -79,11 +86,13 @@ module ap_peripheral_subsystem_tb;
     .eth_prdata_i(eth_prdata),
     .eth_pslverr_i(eth_pslverr),
     .periph_axi_i(axi),
+    .bpi_axi_o(bpi_axi),
     .bpi_addr_o(bpi_addr),
     .bpi_dq_io(bpi_dq),
     .bpi_ce_n_o(bpi_ce_n),
     .bpi_oe_n_o(bpi_oe_n),
     .bpi_we_n_o(bpi_we_n),
+    .bpi_adv_n_o(bpi_adv_n),
     .bpi_reset_n_o(bpi_reset_n),
     .bpi_ryby_n_i(bpi_ryby_n)
   );
@@ -95,6 +104,7 @@ module ap_peripheral_subsystem_tb;
     .ce_n_i(bpi_ce_n),
     .oe_n_i(bpi_oe_n),
     .we_n_i(bpi_we_n),
+    .adv_n_i(bpi_adv_n),
     .ryby_n_o(bpi_ryby_n)
   );
 

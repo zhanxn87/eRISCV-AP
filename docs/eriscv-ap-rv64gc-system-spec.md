@@ -19,14 +19,7 @@ cache, and physical-routing state and exports cached `axi_mem` plus uncached
 `axi_periph` managers. `ap_memory_system` exports DDR only and locally returns DECERR for
 non-DDR traffic; it is not a peripheral path.
 
-The peripheral slave complex is now integrated for the single-hart RTL:
-`axi_periph` routes local device traffic through the AXI-to-APB bridge; the APB
-decoder selects CLINT, PLIC, and low-speed peripherals, while BPI terminates
-in an AXI4-to-asynchronous-x16 NOR controller that drives SoC BPI pins. The VCU108 C1 DDR4 MIG source XCI is
-checked in; its board wrapper, AP-address rebase, 64-to-512 AXI adaptation,
-reset/calibration integration and multi-hart coherence remain follow-on work.  The
-portable Ethernet DMA path is integrated at the SoC GMII boundary; board PCS/PMA
-integration remains follow-on work. The core has an M/S/U trap baseline, end-to-end Sv39 I/D
+The peripheral slave complex is integrated for the single-hart RTL: `axi_periph` routes local device traffic through the AXI-to-APB bridge; the APB decoder selects CLINT, PLIC, and low-speed peripherals, while the BPI aperture is an AXI4 target.  Simulation selects the embedded asynchronous x16 read-only controller; an FPGA board selects an external BPI AXI target instead.  The VCU108 top instantiates the C1 DDR4 MIG with AP-address rebase, 64-to-512 AXI adaptation, reset-after-calibration sequencing, and AXI EMC plus STARTUPE3 for the synchronous x16 BPI NOR.  The portable Ethernet DMA terminates at GMII; the VCU108 top adds PCS/PMA SGMII integration and propagates its rate enable to the MAC. The core has an M/S/U trap baseline, end-to-end Sv39 I/D
 request plumbing, and tested `SATP`, `SFENCE.VMA`, ITLB/DTLB/PTW/fault paths.
 No 32-bit TCM map, generic MCU DMA, legacy M2 APB fabric, M2 clock controller,
 or M2 watchdog reset tree is part of the AP SoC manifest.
@@ -45,8 +38,7 @@ or M2 watchdog reset tree is part of the AP SoC manifest.
 - Architectural XLEN is 64. Physical addresses are 48 bits. The virtual
   address target is canonical Sv39. `SATP`, `SFENCE.VMA`, ITLB/DTLB, and a
   shared PTW route virtual I/D requests and precise page/access faults through
-  `ap_hart_memory_frontend`; the VCU108 MIG source is present, while its
-  board-level DDR adaptation and firmware are separate follow-on work.
+  `ap_hart_memory_frontend`; the VCU108 board top implements MIG address/width adaptation and reset-after-calibration sequencing; firmware remains separate work.
 - The initial product has one hart. `AP_HART_COUNT` is a future cluster
   parameter; a second private write-back D-Cache is forbidden until a coherent
   L2/directory path is present.
@@ -160,19 +152,26 @@ replaces the upstream generic `lfsr` solely to avoid collision with
 The portable Ethernet subsystem terminates at a GMII boundary and owns
 clock-domain crossings between SoC/DMA logic and the PCS clocks; it must not
 assume that the SoC root clock is 125 MHz. The VCU108 wrapper owns the
-Marvell M88E1111 SGMII PCS/PMA, LVDS reference clock, MDIO/MDC, PHY reset,
+Marvell M88E1111 SGMII PCS/PMA, LVDS reference clock, PHY reset, PHY interrupt,
 and SGMII pins. `fpga/vcu108/ip/gig_ethernet_pcs_pma/create_ip.tcl` is
 the source-controlled Vivado PCS/PMA configuration, not generated IP output.
 
-The SoC instantiates the initial Ethernet data plane: APB direct-buffer control,
-64-bit AXI4 DMA, byte-stream clock-domain crossings, GMII MAC, and PLIC source 5.
-The controller submits one posted TX buffer and one posted RX buffer at a time;
-addresses must be eight-byte aligned; TX length is at most 1536 bytes and RX
-capacity is at most 2048 bytes. A completed-DMA token crosses to the PHY clock
-domain only after the whole TX frame reaches the asynchronous FIFO, so a faster
-PHY cannot underflow GMII TX.
-Descriptor rings, PHY management/link reporting, external D-Cache/reservation
-invalidations, and the Linux driver are later control-plane work.
+The SoC instantiates an Ethernet descriptor-ring data plane: APB ring control,
+separate descriptor and payload 64-bit AXI4 managers, byte-stream clock-domain
+crossings, GMII MAC, and PLIC source 5. TX and RX rings are independent
+power-of-two arrays of 2..256 32-byte descriptors; `HEAD == TAIL` is empty and
+software retains one unused entry. Ring bases are 32-byte aligned, DMA buffers
+are 8-byte aligned and physical-address bits `[47:0]`, TX is at most 1536 bytes,
+and RX capacity is at most 2048 bytes. A descriptor is four little-endian
+64-bit words: address, length plus `OWN/IOC/EOP`, hardware completion status
+(`DONE/ERROR/error/actual length`), and software cookie.
+
+The ring engine fetches descriptors and writes completion status only after the
+payload transfer finishes. Its AXI port and the payload-DMA AXI port are joined
+by `axi_mux_intf` at the Ethernet `axi_mem` boundary. TX is staged fully in the
+PHY clock domain before the MAC consumes it, so a faster PHY cannot underflow a
+frame. `CTRL.RING_RESET` clears both heads and is used only after `STATUS` is
+idle; this permits Linux ifdown/up to reinitialize the rings. PHY management/MDIO, link reporting, and external D-Cache/reservation invalidations remain separate work.
 
 ### Current transition implementation
 
@@ -206,10 +205,12 @@ elaboration:
 - `make -C dv/soc/sim ap-peripheral-subsystem`: 64-bit AXI lane splitting,
   CLINT APB `MSIP`/`MTIP`/`MTIME`, APB GPIO, Ethernet APB decode, PLIC APB M/S
   contexts, and BPI NOR read access.
-- `make -C dv/soc/sim ap-ethernet-dma`: APB direct-buffer control, AXI64 DMA
-  reads/writes, independent SoC/PHY-clock CDC, GMII TX preamble/SFD/payload/FCS,
-  CRC-valid GMII RX, and DDR payload round-trip. It does not validate descriptor rings, board PCS/PMA,
-  PHY management, Linux driver behavior, or cache coherency.
+- `make -C dv/soc/sim ap-ethernet-dma`: two TX and two RX DDR descriptors,
+  descriptor AXI fetch/completion writes, 64-bit AXI payload DMA, independent
+  SoC/PHY-clock CDC, GMII TX preamble/SFD/payload/FCS, CRC-valid GMII RX, DDR
+  payload round-trip, PLIC IRQ status, producer/consumer head movement, and
+  idle ring reset. It does not boot Linux, compile/load the out-of-tree driver,
+  validate board PCS/PMA or PHY management, or prove cache coherency.
 
 Implementation source for the AXI transport is the frozen
 [PULP AXI](https://github.com/pulp-platform/axi) `v0.35.3` snapshot in
@@ -246,11 +247,11 @@ BPI terminates in `ap_axi_bpi_nor`, which exposes a 26-bit x16 word address, rea
 | `0x0000_1000_2000` | timer0 | 3 |
 | `0x0000_1000_3000` | GPIO0 | — |
 | `0x0000_1000_4000` | WDT0 reserved | 4 reserved |
-| `0x0000_1000_5000` | Ethernet MAC/DMA | 5; direct-buffer APB/DMA RTL |
+| `0x0000_1000_5000` | Ethernet MAC/DMA | 5; descriptor-ring APB/DMA RTL |
 
 PLIC context 0 (M) is at offset `0x0020_0000`; context 1 (S) is at
 `0x0020_1000`. Ethernet is PLIC source ID 5. Its APB aperture at
-`0x0000_1000_5000` controls the initial direct-buffer DMA engine.
+`0x0000_1000_5000` controls the descriptor-ring DMA engine. Its TX and RX rings use 32-byte descriptors, `HEAD`/`TAIL`, W1C completion IRQ bits, and an idle-only `RING_RESET` command.
 
 ## L1 cache architecture
 
@@ -359,8 +360,7 @@ of ordinary load/store accesses.
   AXI ID width is 4 bits at subsystem boundaries. An L1 line fill or
   write-back is `INCR`, `LEN=7`, and transfers eight 64-bit beats (64 bytes).
   The VCU108 C1 MIG source has a 512-bit, 31-bit-local-address user AXI port;
-  its board wrapper must subtract `AP_DDR_BASE` and adapt the portable 64-bit
-  `axi_mem` interface. That wrapper is not yet implemented.
+  `ap_axi_ddr_bridge` in the VCU108 top subtracts `AP_DDR_BASE`, filters unsupported ATOP, and adapts the portable 64-bit `axi_mem` interface.
 - A coherent L2/directory sits between multiple private write-back D-Caches
   and DDR. AXI alone supplies no cache coherence; direct parallel connection
   of multiple private D-Caches to DDR is prohibited.
@@ -453,15 +453,12 @@ descriptor rings/PHY/Linux coherency, firmware/DTB, FPGA timing, or Linux boot.
 5. **Done:** integrate the implemented `satp`/ITLB/DTLB/PTW controller at
    the core-facing I/D boundaries with precise instruction/load/store
    page/access-fault plumbing and MPRV effective privilege.
-6. **Done (local peripherals and MIG source):** integrate 64-bit
-   `axi_periph` lane handling, AXI-to-APB, CLINT, M/S PLIC contexts,
-   UART0/SPI0/timer0/GPIO0, the read-only x16 BPI NOR controller, its generated
-   first-stage boot image, and the VCU108 C1 MIG source XCI. **Next:** the AP
-   board wrapper (DDR rebase, 64-to-512 adapter, and calibration reset), BPI
-   CFI/program-erase support, OpenSBI, and DTB.
-7. **Done (initial Ethernet data plane):** vendor the MIT 1G MAC source closure,
-   source-control the VCU108 SGMII PCS/PMA configuration, and integrate APB
-   direct-buffer control, non-coherent AXI4 DMA, CDC, GMII MAC, PLIC source 5,
-   and MAC-level TX/RX simulation. **Next:** descriptor rings, PHY management,
-   Linux Zicbom buffer-ownership driver ABI, and board PCS/PMA integration; add
-   L2/directory before any multi-hart private write-back D-Cache configuration.
+6. **Done (peripherals and VCU108 structure):** integrate 64-bit `axi_periph` lane handling, AXI-to-APB, CLINT, M/S PLIC contexts, UART0/SPI0/timer0/GPIO0, the simulation BPI NOR controller, its first-stage boot image, and a VCU108 board top with MIG address/width adaptation, AXI EMC/STARTUPE3 BPI, and reset sequencing. **Next:** Vivado timing closure/hardware boot, BPI program-erase software support, OpenSBI, and DTB.
+7. **Done (Ethernet descriptor rings):** vendor the MIT 1G MAC source closure,
+   source-control the VCU108 SGMII PCS/PMA configuration and board wrapper, implement non-coherent
+   DDR TX/RX descriptor rings, 64-bit AXI descriptor/payload arbitration, CDC,
+   GMII MAC, PLIC source 5, ring-reset semantics, and focused two-frame
+   TX/RX simulation. `sw/linux/eriscv_ap_eth/` provides an out-of-tree NAPI
+   platform driver using the Linux DMA API. **Next:** build and boot it against
+   an AP Linux image and add PHY management/link reporting; add L2/directory before any multi-hart private write-back D-Cache
+   configuration.

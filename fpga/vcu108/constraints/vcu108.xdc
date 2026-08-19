@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: 2025-2026 Xianning Zhan
 # SPDX-License-Identifier: BSD-3-Clause
+#
+# eRISCV-AP VCU108 board constraints.  DDR4 placement/timing is owned by the
+# checked-in MIG XCI and its generated constraint set.
 
-# VCU108 board-level constraints. Pin data is from the Vivado VCU108 board file.
 create_clock -period 3.333 -name sys_clk_300 [get_ports sys_clk_p]
-
 set_property PACKAGE_PIN G31 [get_ports sys_clk_p]
 set_property PACKAGE_PIN F31 [get_ports sys_clk_n]
 set_property IOSTANDARD DIFF_SSTL12 [get_ports sys_clk_p]
@@ -11,34 +12,100 @@ set_property IOSTANDARD DIFF_SSTL12 [get_ports sys_clk_n]
 
 set_property PACKAGE_PIN E36 [get_ports cpu_reset_i]
 set_property IOSTANDARD LVCMOS12 [get_ports cpu_reset_i]
+set_false_path -from [get_ports cpu_reset_i]
 
 set_property PACKAGE_PIN BC24 [get_ports uart_rx_i]
 set_property PACKAGE_PIN BE24 [get_ports uart_tx_o]
 set_property IOSTANDARD LVCMOS18 [get_ports uart_rx_i]
 set_property IOSTANDARD LVCMOS18 [get_ports uart_tx_o]
 
-set_property PACKAGE_PIN BC40 [get_ports {boot_mode_i[0]}]
-set_property PACKAGE_PIN L19 [get_ports {boot_mode_i[1]}]
-set_property PACKAGE_PIN C37 [get_ports {boot_mode_i[2]}]
-set_property IOSTANDARD LVCMOS12 [get_ports {boot_mode_i[*]}]
+set_property PACKAGE_PIN AT32 [get_ports {led_o[0]}]
+set_property PACKAGE_PIN AV34 [get_ports {led_o[1]}]
+set_property PACKAGE_PIN AY30 [get_ports {led_o[2]}]
+set_property PACKAGE_PIN BB32 [get_ports {led_o[3]}]
+set_property PACKAGE_PIN BF32 [get_ports {led_o[4]}]
+set_property IOSTANDARD LVCMOS12 [get_ports {led_o[*]}]
 
-set_property PACKAGE_PIN AT32 [get_ports boot_uart_overrun_led_o]
-set_property PACKAGE_PIN AV34 [get_ports boot_uart_protocol_error_led_o]
-set_property IOSTANDARD LVCMOS12 [get_ports boot_uart_overrun_led_o]
-set_property IOSTANDARD LVCMOS12 [get_ports boot_uart_protocol_error_led_o]
+# M88E1111 SGMII PHY and its 625 MHz LVDS reference.
+set_property PACKAGE_PIN AR24 [get_ports phy_sgmii_rx_p]
+set_property PACKAGE_PIN AT24 [get_ports phy_sgmii_rx_n]
+set_property PACKAGE_PIN AR23 [get_ports phy_sgmii_tx_p]
+set_property PACKAGE_PIN AR22 [get_ports phy_sgmii_tx_n]
+set_property IOSTANDARD DIFF_HSTL_I_18 [get_ports {phy_sgmii_rx_p phy_sgmii_rx_n phy_sgmii_tx_p phy_sgmii_tx_n}]
+set_property PACKAGE_PIN AT22 [get_ports phy_sgmii_clk_p]
+set_property PACKAGE_PIN AU22 [get_ports phy_sgmii_clk_n]
+set_property IOSTANDARD LVDS_25 [get_ports {phy_sgmii_clk_p phy_sgmii_clk_n}]
+set_property PACKAGE_PIN AU21 [get_ports phy_reset_n_o]
+set_property PACKAGE_PIN AT21 [get_ports phy_int_n_i]
+set_property IOSTANDARD LVCMOS18 [get_ports {phy_reset_n_o phy_int_n_i}]
 
-create_clock -period 100.000 -name jtag_tck [get_nets jtag_tck]
+# VCU108 MT28GU01 BPI x16 NOR. D[3:0], CE#, and CCLK are dedicated
+# configuration pins controlled by STARTUPE3 and must not be constrained here.
+set_property PACKAGE_PIN AM19 [get_ports {bpi_dq_upper_io[4]}]
+set_property PACKAGE_PIN AM18 [get_ports {bpi_dq_upper_io[5]}]
+set_property PACKAGE_PIN AN20 [get_ports {bpi_dq_upper_io[6]}]
+set_property PACKAGE_PIN AP20 [get_ports {bpi_dq_upper_io[7]}]
+set_property PACKAGE_PIN AN19 [get_ports {bpi_dq_upper_io[8]}]
+set_property PACKAGE_PIN AN18 [get_ports {bpi_dq_upper_io[9]}]
+set_property PACKAGE_PIN AR18 [get_ports {bpi_dq_upper_io[10]}]
+set_property PACKAGE_PIN AR17 [get_ports {bpi_dq_upper_io[11]}]
+set_property PACKAGE_PIN AT20 [get_ports {bpi_dq_upper_io[12]}]
+set_property PACKAGE_PIN AT19 [get_ports {bpi_dq_upper_io[13]}]
+set_property PACKAGE_PIN AT17 [get_ports {bpi_dq_upper_io[14]}]
+set_property PACKAGE_PIN AU17 [get_ports {bpi_dq_upper_io[15]}]
+set_property IOSTANDARD LVCMOS18 [get_ports {bpi_dq_upper_io[*]}]
 
-# The ungated SoC clock and its gated core derivative form synchronous paths
-# through local memory. Apply the group directly to the BUFG/BUFGCE output
-# segments so implementation balances their insertion delays.
-set_property CLOCK_DELAY_GROUP ERISCV_SOC_CORE \
-  [get_nets {soc_clk soc_i/core_clock_gate_i/core_clk}]
+set_property PACKAGE_PIN AR20 [get_ports {bpi_addr_o[0]}]
+set_property PACKAGE_PIN AR19 [get_ports {bpi_addr_o[1]}]
+set_property PACKAGE_PIN AV20 [get_ports {bpi_addr_o[2]}]
+set_property PACKAGE_PIN AW20 [get_ports {bpi_addr_o[3]}]
+set_property PACKAGE_PIN AU19 [get_ports {bpi_addr_o[4]}]
+set_property PACKAGE_PIN AU18 [get_ports {bpi_addr_o[5]}]
+set_property PACKAGE_PIN AV19 [get_ports {bpi_addr_o[6]}]
+set_property PACKAGE_PIN AV18 [get_ports {bpi_addr_o[7]}]
+set_property PACKAGE_PIN AW18 [get_ports {bpi_addr_o[8]}]
+set_property PACKAGE_PIN AY18 [get_ports {bpi_addr_o[9]}]
+set_property PACKAGE_PIN AY19 [get_ports {bpi_addr_o[10]}]
+set_property PACKAGE_PIN BA19 [get_ports {bpi_addr_o[11]}]
+set_property PACKAGE_PIN BA17 [get_ports {bpi_addr_o[12]}]
+set_property PACKAGE_PIN BB17 [get_ports {bpi_addr_o[13]}]
+set_property PACKAGE_PIN BB19 [get_ports {bpi_addr_o[14]}]
+set_property PACKAGE_PIN BC19 [get_ports {bpi_addr_o[15]}]
+set_property PACKAGE_PIN BB18 [get_ports {bpi_addr_o[16]}]
+set_property PACKAGE_PIN BC18 [get_ports {bpi_addr_o[17]}]
+set_property PACKAGE_PIN AY20 [get_ports {bpi_addr_o[18]}]
+set_property PACKAGE_PIN BA20 [get_ports {bpi_addr_o[19]}]
+set_property PACKAGE_PIN BD18 [get_ports {bpi_addr_o[20]}]
+set_property PACKAGE_PIN BD17 [get_ports {bpi_addr_o[21]}]
+set_property PACKAGE_PIN BC20 [get_ports {bpi_addr_o[22]}]
+set_property PACKAGE_PIN BD20 [get_ports {bpi_addr_o[23]}]
+set_property PACKAGE_PIN BE20 [get_ports {bpi_addr_o[24]}]
+set_property PACKAGE_PIN BF20 [get_ports {bpi_addr_o[25]}]
+set_property IOSTANDARD LVCMOS18 [get_ports {bpi_addr_o[*]}]
 
-# Keep the fabric JTAG clock asynchronous to both the primary board clock and
-# every MMCM-generated SoC clock derived from it.
-set_clock_groups -asynchronous \
-  -group [get_clocks -include_generated_clocks sys_clk_300] \
-  -group [get_clocks jtag_tck]
-set_false_path -from [get_ports cpu_reset_i]
-set_false_path -from [get_ports {boot_mode_i[*]}]
+set_property PACKAGE_PIN BF17 [get_ports bpi_oe_n_o]
+set_property PACKAGE_PIN BF16 [get_ports bpi_we_n_o]
+set_property PACKAGE_PIN AW17 [get_ports bpi_adv_n_o]
+set_property PACKAGE_PIN BC23 [get_ports bpi_ryby_n_i]
+set_property IOSTANDARD LVCMOS18 [get_ports {bpi_oe_n_o bpi_we_n_o bpi_adv_n_o bpi_ryby_n_i}]
+
+# The BPI user clock is carried to CCLK through STARTUPE3.
+create_generated_clock -name bpi_axi_clk_100 -source [get_ports sys_clk_p] -divide_by 3 [get_pins bpi_axi_clk_bufg_i/O]
+create_generated_clock -name bpi_rdclk_50 -source [get_ports sys_clk_p] -divide_by 6 [get_pins bpi_rdclk_bufg_i/O]
+# The AXI EMC IP owns the device cycle timing; these board-interface delays match XAPP1282.
+set bpi_rdclk [get_clocks -of_objects [get_pins bpi_rdclk_bufg_i/O]]
+set_input_delay -clock $bpi_rdclk -max 7.0 [get_ports bpi_ryby_n_i]
+set_input_delay -clock $bpi_rdclk -min 6.0 [get_ports bpi_ryby_n_i]
+set_input_delay -clock $bpi_rdclk -max 16.0 [get_ports {bpi_dq_upper_io[*]}]
+set_input_delay -clock $bpi_rdclk -min 7.0 [get_ports {bpi_dq_upper_io[*]}]
+set_output_delay -clock $bpi_rdclk -max 8.0 [get_ports {bpi_dq_upper_io[*] bpi_addr_o[*] bpi_oe_n_o bpi_we_n_o bpi_adv_n_o}]
+set_output_delay -clock $bpi_rdclk -min 1.0 [get_ports {bpi_dq_upper_io[*] bpi_addr_o[*] bpi_oe_n_o bpi_we_n_o bpi_adv_n_o}]
+
+# Master BPI x16 configuration and post-configuration NOR access use 1.8 V.
+set_property CONFIG_VOLTAGE 1.8 [current_design]
+set_property CFGBVS GND [current_design]
+set_property CONFIG_MODE BPI16 [current_design]
+set_property BITSTREAM.GENERAL.COMPRESS TRUE [current_design]
+set_property BITSTREAM.CONFIG.CONFIGFALLBACK Enable [current_design]
+set_property BITSTREAM.CONFIG.BPI_SYNC_MODE Type1 [current_design]
+set_property BITSTREAM.CONFIG.UNUSEDPIN Pulldown [current_design]

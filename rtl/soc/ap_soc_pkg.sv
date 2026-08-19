@@ -64,6 +64,7 @@ package ap_soc_pkg;
   // 16-bit words, while AP_BPI_BASE/LIMIT remain byte addresses.
   localparam int unsigned AP_BPI_DATA_W = 16;
   localparam int unsigned AP_BPI_ADDR_W = 26;
+  localparam int unsigned AP_BPI_ADV_PULSE_CYCLES = 1;
   localparam int unsigned AP_BPI_READ_WAIT_CYCLES = 1;
 
   function automatic logic ap_addr_in_range(

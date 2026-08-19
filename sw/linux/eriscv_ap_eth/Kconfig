@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config ERISCV_AP_ETH
+	tristate "eRISCV-AP descriptor-ring Ethernet"
+	depends on OF && HAS_DMA
+	help
+	  Driver for the AP Ethernet MAC, its non-coherent 48-bit AXI DMA path,
+	  and the 32-byte DDR descriptor rings.

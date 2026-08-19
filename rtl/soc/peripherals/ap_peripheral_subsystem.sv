@@ -8,7 +8,11 @@
 
 module ap_peripheral_subsystem
   import ap_soc_pkg::*;
-(
+#(
+  parameter int unsigned BPI_READ_WAIT_CYCLES_P = AP_BPI_READ_WAIT_CYCLES,
+  parameter int unsigned BPI_ADV_PULSE_CYCLES_P = AP_BPI_ADV_PULSE_CYCLES,
+  parameter bit USE_EMBEDDED_BPI_NOR_P = 1'b1
+) (
   input logic clk,
   input logic rst_n,
   input logic eth_irq_i,
@@ -41,11 +45,14 @@ module ap_peripheral_subsystem
 
   AXI_BUS.Slave periph_axi_i,
 
+  AXI_BUS.Master bpi_axi_o,
+
   output logic [AP_BPI_ADDR_W-1:0] bpi_addr_o,
   inout wire [AP_BPI_DATA_W-1:0] bpi_dq_io,
   output logic bpi_ce_n_o,
   output logic bpi_oe_n_o,
   output logic bpi_we_n_o,
+  output logic bpi_adv_n_o,
   output logic bpi_reset_n_o,
   input logic bpi_ryby_n_i
 );
@@ -107,18 +114,38 @@ module ap_peripheral_subsystem
     .mst_axi_o(periph_egress)
   );
 
-  ap_axi_bpi_nor bpi_nor_i (
-    .clk(clk),
-    .rst_n(rst_n),
-    .s_axi_i(periph_egress[AP_AXI_PERIPH_EGRESS_FLASH]),
-    .bpi_addr_o(bpi_addr_o),
-    .bpi_dq_io(bpi_dq_io),
-    .bpi_ce_n_o(bpi_ce_n_o),
-    .bpi_oe_n_o(bpi_oe_n_o),
-    .bpi_we_n_o(bpi_we_n_o),
-    .bpi_reset_n_o(bpi_reset_n_o),
-    .bpi_ryby_n_i(bpi_ryby_n_i)
-  );
+  generate
+    if (USE_EMBEDDED_BPI_NOR_P) begin : g_embedded_bpi
+      ap_axi_bpi_nor #(
+        .READ_WAIT_CYCLES_P(BPI_READ_WAIT_CYCLES_P),
+        .ADV_PULSE_CYCLES_P(BPI_ADV_PULSE_CYCLES_P)
+      ) bpi_nor_i (
+        .clk(clk),
+        .rst_n(rst_n),
+        .s_axi_i(periph_egress[AP_AXI_PERIPH_EGRESS_FLASH]),
+        .bpi_addr_o(bpi_addr_o),
+        .bpi_dq_io(bpi_dq_io),
+        .bpi_ce_n_o(bpi_ce_n_o),
+        .bpi_oe_n_o(bpi_oe_n_o),
+        .bpi_we_n_o(bpi_we_n_o),
+        .bpi_adv_n_o(bpi_adv_n_o),
+        .bpi_reset_n_o(bpi_reset_n_o),
+        .bpi_ryby_n_i(bpi_ryby_n_i)
+      );
+      ap_axi64_idle_master bpi_idle_i (
+        .m_axi_o(bpi_axi_o)
+      );
+    end else begin : g_external_bpi
+      `AXI_ASSIGN(bpi_axi_o, periph_egress[AP_AXI_PERIPH_EGRESS_FLASH])
+      assign bpi_addr_o = '0;
+      assign bpi_dq_io = {AP_BPI_DATA_W{1'bz}};
+      assign bpi_ce_n_o = 1'b1;
+      assign bpi_oe_n_o = 1'b1;
+      assign bpi_we_n_o = 1'b1;
+      assign bpi_adv_n_o = 1'b1;
+      assign bpi_reset_n_o = rst_n;
+    end
+  endgenerate;
 
   ap_axi64_to_apb32 axi_to_apb_i (
     .clk(clk),

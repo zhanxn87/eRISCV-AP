@@ -23,8 +23,16 @@ module ap_soc_flash_boot_tb;
   logic bpi_ce_n;
   logic bpi_oe_n;
   logic bpi_we_n;
+  logic bpi_adv_n;
   logic bpi_reset_n;
   logic bpi_ryby_n;
+  logic [AP_BPI_ADDR_W-1:0] ignored_bpi_addr;
+  wire [AP_BPI_DATA_W-1:0] ignored_bpi_dq;
+  logic ignored_bpi_ce_n;
+  logic ignored_bpi_oe_n;
+  logic ignored_bpi_we_n;
+  logic ignored_bpi_adv_n;
+  logic ignored_bpi_reset_n;
   logic boot_ddr_write_seen;
   int unsigned bpi_read_cycles;
   logic [511:0] marker_line;
@@ -36,8 +44,16 @@ module ap_soc_flash_boot_tb;
     .AXI_USER_WIDTH(AP_AXI_USER_W)
   ) ddr_axi ();
 
+  AXI_BUS #(
+    .AXI_ADDR_WIDTH(AP_PADDR_W),
+    .AXI_DATA_WIDTH(AP_AXI_DATA_W),
+    .AXI_ID_WIDTH(AP_AXI_SLV_ID_W),
+    .AXI_USER_WIDTH(AP_AXI_USER_W)
+  ) bpi_axi ();
+
   ap_soc #(
-    .BOOT_ROM_INIT_FILE_P("../../../sw/ap_bootrom/build/bootrom.mem")
+    .BOOT_ROM_INIT_FILE_P("../../../sw/ap_bootrom/build/bootrom.mem"),
+    .USE_EMBEDDED_BPI_NOR_P(1'b0)
   ) dut (
     .clk(clk),
     .rst_n(rst_n),
@@ -60,6 +76,7 @@ module ap_soc_flash_boot_tb;
     .eth_gmii_rx_er_i(1'b0),
     .eth_tx_clk_i(clk),
     .eth_tx_rst_n_i(rst_n),
+    .eth_gmii_clk_enable_i(1'b1),
     .eth_gmii_txd_o(),
     .eth_gmii_tx_en_o(),
     .eth_gmii_tx_er_o(),
@@ -70,13 +87,15 @@ module ap_soc_flash_boot_tb;
     .debug_pc_o(),
     .debug_cause_o(),
     .ddr_axi_o(ddr_axi),
-    .bpi_addr_o(bpi_addr),
-    .bpi_dq_io(bpi_dq),
-    .bpi_ce_n_o(bpi_ce_n),
-    .bpi_oe_n_o(bpi_oe_n),
-    .bpi_we_n_o(bpi_we_n),
-    .bpi_reset_n_o(bpi_reset_n),
-    .bpi_ryby_n_i(bpi_ryby_n)
+    .bpi_axi_o(bpi_axi),
+    .bpi_addr_o(ignored_bpi_addr),
+    .bpi_dq_io(ignored_bpi_dq),
+    .bpi_ce_n_o(ignored_bpi_ce_n),
+    .bpi_oe_n_o(ignored_bpi_oe_n),
+    .bpi_we_n_o(ignored_bpi_we_n),
+    .bpi_adv_n_o(ignored_bpi_adv_n),
+    .bpi_reset_n_o(ignored_bpi_reset_n),
+    .bpi_ryby_n_i(1'b1)
   );
 
   axi4_line_mem #(
@@ -90,6 +109,20 @@ module ap_soc_flash_boot_tb;
     .s_axi_i(ddr_axi)
   );
 
+  ap_axi_bpi_nor bpi_controller_i (
+    .clk(clk),
+    .rst_n(rst_n),
+    .s_axi_i(bpi_axi),
+    .bpi_addr_o(bpi_addr),
+    .bpi_dq_io(bpi_dq),
+    .bpi_ce_n_o(bpi_ce_n),
+    .bpi_oe_n_o(bpi_oe_n),
+    .bpi_we_n_o(bpi_we_n),
+    .bpi_adv_n_o(bpi_adv_n),
+    .bpi_reset_n_o(bpi_reset_n),
+    .bpi_ryby_n_i(bpi_ryby_n)
+  );
+
   ap_bpi_nor_model #(
     .ADDR_W_P(AP_BPI_ADDR_W),
     .INIT_FILE_P("../../../sw/ap_bootrom/build/boot_payload.bpi.mem")
@@ -100,6 +133,7 @@ module ap_soc_flash_boot_tb;
     .ce_n_i(bpi_ce_n),
     .oe_n_i(bpi_oe_n),
     .we_n_i(bpi_we_n),
+    .adv_n_i(bpi_adv_n),
     .ryby_n_o(bpi_ryby_n)
   );
 

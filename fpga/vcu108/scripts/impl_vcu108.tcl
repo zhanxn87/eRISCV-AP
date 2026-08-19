@@ -17,4 +17,4 @@ report_clock_utilization -file [file join $build_dir clock_utilization_routed.rp
 report_drc -file [file join $build_dir drc_routed.rpt]
 report_methodology -file [file join $build_dir methodology_routed.rpt]
 write_checkpoint -force [file join $build_dir ${top_name}_routed.dcp]
-puts "INFO: M2 VCU108 implementation complete."
+puts "INFO: AP VCU108 implementation complete."
